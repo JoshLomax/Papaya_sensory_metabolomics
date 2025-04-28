@@ -4,3 +4,8 @@
 html {
   font-size: 14px;
 }
+.scroll-100 {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}

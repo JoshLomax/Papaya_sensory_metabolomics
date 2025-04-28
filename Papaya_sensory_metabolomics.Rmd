@@ -21,68 +21,2533 @@ output:
       # toc_float: true
       # toc_depth: 4
   #    highlight: pygments
+  
       number_sections: false
-      code_folding: show
+      code_folding: hide
 #      keep_md: true
 #bibliography: style/comparative_genomics.bib
-bibliography: ["style/Papaya_sensory_metabolomics.bib"] 
+bibliography: ["style/references.bib"] 
 csl: style/springer-basic-improved-author-date-with-italic-et-al-period.csl
 ---
 
 ```{r setup, include=FALSE}
 devtools::source_gist("7f63547158ecdbacf31b54a58af0d1cc", filename = "util.R")
-knitr::opts_chunk$set(list(echo = TRUE, eval=FALSE, message=FALSE))
-fav_packages <- c('tidyverse',  
-                  "juba/rmdformats")
-# pak::pak(fav_packages)
-
-pacman::p_load(char = basename(fav_packages), update=FALSE, install=FALSE)
+knitr::opts_chunk$set(list(echo = TRUE,
+                           eval=T,
+                           message=FALSE,
+                           comment='>',
+                           fig.width = 6,
+                           fig.height = 4,
+                           fig.align = 'center'))
 
 # add copy to clipboard icon
 # klippy::klippy(c('r', 'bash'), position = c('top', 'right'))
+
+
 ```
 
 ## Aims
 
-- Genomic characterisation of _Marteilia sydneyi_  
-- Identify genes that play a role during infection of _M. sydneyi_ in Sydney Rock Oysters _Saccostrea glomerata_ (QX disease)  
-
-As demonstrated by @colantonioMetabolomicSelectionEnhanced2022, metabolomic analysis of fruit can lead to amazing findings [@liuMultidimensionalAnalysisFlavor2025; @lomaxMultiomicApplicationsUnderstanding2024].
+The aim of this project was to determine the role of flavour related metabolites in papaya fruit flavour, focussing on taste and aroma. As demonstrated by @Colantonio2022, metabolomic analysis of fruit can identify metabolite markers for fruit flavour selection in breeding programs. Subsequently, genetic markers may be developed, which are neccesary for papaya breeding due to the challenges associated with growing thousands of mature trees for phenotyping [@Lomax2024]. We aimed to build on the work reported by @Zhou2022
 
 ### Objectives
 
-1. Assemble and annotate the _Marteilia sydneyi_ genome  
-2. Perform comparative genomics analysis to assess core and novel genes   
-3. Identify unique _M. sydneyi_ sequences towards development of molecular assays   
-
-
-## General overview of the analysis pipeline:
-
-1.  Data pre-processing:  
-    a.  Reads basecalling  
-    b.  Quality check  
-    c.  Adaptor trimming  
-    d.  Post-trim quality check  
-2.  Mapping reads to host reference genome  
-3.  _De Novo_ genome assembly of non-host reads  
-4.  Taxonomic classification of contigs  
-5.  Removal of additional host and off-target contigs  
-6.  Annotation of pathogen genes  
-7.  Comparative genimics analyses  
-7.  Summary statistics and visualisation  
+1.  Examine the general differences in sensory and metabolite profiles between 27 papaya genotypes using principal component analysis.
+2.  Apply machine learning models (GBM and BGLR) to analyse how specific metabolites contribute to aroma and flavor characteristics in papaya.
+3.  Identify trends in consumer liking scores and consumer demographic information using a clustering algorithm (APcluster)
+4.  Apply machine learning models (GBM and BGLR) to analyse the effect of sensory attributes and metabolite concentrations on papaya liking scores
+5.  Generate a predictive machine learning model (XGBoost) to estimate fruit liking based on targeted metabolite concentrations
 
 ## Methods
 
-### DNA Extraction
-High molecular DNA was extracted using the Monarch® HMW DNA Extraction Kit for Tissue (New England Biolabs, [NEB T3060](https://www.neb.com/en-au/products/t3060-monarch-hmw-dna-extraction-kit-for-tissue#Product%20Information)) from digestive gland tissue of Sydney rock oysters infected with QX disease. The samples were confirmed to be infected with QX (contain _M. sydneyi_) by a PCR assay using the extracted DNA as template, as described by XXX. DNA integrity, purity and quantity were assessed by gel electrophoresis, Nanodrop and Qubit, respectively.    
+Sensory data was collected by a trained and untrained panel of tasters. The trained panel undertook standard quantitative descriptive analysis (QDA) for 27 papaya genotypes. The untrained panelists consisted of 125 consumers recruit for a "tropical fruit tasting", who then scored nine disctinctly flavoured papaya genotypes using a labelled affective magnitude scale between 0 to 100 for liking.
 
+Papaya fruit was collected from a single location (Dimbulah, QLD, AUS) on four separate occasions: August 2022 (QDA), February 2023 (QDA), January 2024 (Consumer) and February 2024 (QDA). The fruit was collected and treated aligned with industry management practices (e.g. ripening index 2-3, fungicide/ethylene, refrigerated truck transportation).
+
+Chemical analysis of the fruit employed various methods, including traditional measurements for fruit quality (i.e. TSS, TA, pH, water content) and analytical methods (HS-SPME-GC-MS/MS, LC-MS/MS and IC-Au detector). To preserve the metabolite profile of the fruit after sensory preparation, the fruit was flash frozen and stored at -80. Further, the fruit subject to VOC analysis was prepared at temperatures below -80 using liquid nitrogen. Samples for LC and IC were freeze dried and subject to solvent extraction: IC, sugars (ethanol); LC, GTR (methanol).
+
+Target VOCs were selected based on the concentration ranges reported @Brewer2021, focusing on species that exceeded their odour threshold values in water (OAV > 1). The SPME optimisation and GC-MS conditions largely emulated @Pico2022.
+
+## Data analysis preprocessing
+
+The initial steps of the data analysis pipeline included:
+
+-   Installing/loading required packages
+
+```{r packages}
+# list of packages
+required_packages <- c(
+    "juba/rmdformats","kableExtra","gt","flextable","DT", # Document formatting & tables
+
+    "tidyverse","readxl","janitor", # Data wrangling
+
+    "ggpmisc","ggthemes","ggrepel","geomtextpath","scales", # Plotting stuff
+
+    "FactoMineR","factoextra", # PCA & visualization
+
+    "car","agricolae","tableone", # Stats & summaries
+
+    "BGLR","caret","gbm","xgboost","apcluster","lme4","emmeans" # Modeling & ML
+)
+
+# Install all packages
+# pak::pak(required_packages)
+
+# load all packages
+pacman::p_load(char = basename(required_packages), install=FALSE)
+
+
+```
+
+-   Compiling meta data
+
+```{r meta data, cache=F, collapse=TRUE}
+# Load metadata from Excel
+genotype_table <- 
+  read_excel("data/papaya_sample_meta_data.xlsx",
+             sheet = "meta_data")
+
+# Create sensory metadata table
+sensory_meta <- 
+  data.frame(
+    "var" = c(
+        # Aroma attributes
+        "aroma_intensity_AR", "sweet_fruit_AR", "musty_off_note_AR",
+        "fishy_AR", "citrus_AR", "floral_AR",
+        # Texture attributes
+        "resistance_TX", "velvety_TX", "juiciness_TX", "dissolving_TX",
+        "fibrous_TX",
+        # Flavor attributes
+        "flavour_intensity_FL", "sweetness_FL", "bitterness_FL",
+        "musty_FL", "floral_FL",
+        # Aftertaste attributes
+        "bitter_AT", "sweet_AT", "metallic_AT", "prickly_AT"),
+    
+    "group" = c(
+        rep("aroma", 6),
+        rep("texture", 5),
+        rep("flavour", 5),
+        rep("aftertaste", 4))) %>% 
+  
+   mutate(group = snakecase::to_title_case(group),
+          label = snakecase::to_sentence_case(sub("_[A-Z]+$", "", var)))
+
+# Create classification key for VOCs
+class_key <- 
+  read_excel("data/papaya_sample_meta_data.xlsx",
+             sheet = "VOCs") %>%
+  select(-(Class:Class2)) %>%
+  rename("var" = "variable") %>%
+  mutate(
+    Class3 = str_replace_all(Class3,
+                            c("Ester" = "Lipid-derived"))
+  ) %>%
+  rename("group" = "Class3") %>%
+  mutate(
+    label = str_replace_all(var,
+                           c("Neryl_Geranyl_acetone" = "(E/Z)-Geranylacetone",
+                             "E_2_nonal" = "(E)-2-Nonanal",
+                             "P_cymene" = "p-Cymene",
+                             "Beta_Cyclocitral" = "β-Cyclocitral",
+                             "Beta_ionone" = "β-Ionone",
+                             "Gamma_octalactone" = "γ-Octalactone",
+                             "GTR_conc" = "GTR",
+                             "wet_fraction"="Water fraction",
+                             "_" = " ")))
+
+glimpse(genotype_table)
+glimpse(sensory_meta)
+glimpse(class_key)
+```
+
+-   Calculating VOC matrix effects
+
+```{r VOC Matrix Effect, collapse=TRUE, cache=TRUE}
+calculate_matrix_effect <- function(data,col_range) {
+  data %>%
+    pivot_longer(
+      cols = all_of(col_range),
+      names_to = "species",
+      values_to = "peak_area"
+    ) %>%
+    group_by(Spiked, type, species) %>%
+    summarise(mean_peak_area = mean(peak_area), .groups = "drop") %>%
+    mutate(sample = paste(Spiked, type, sep = "_")) %>%
+    select(-c(Spiked, type)) %>%
+    pivot_wider(
+      names_from = "sample",
+      values_from = "mean_peak_area"
+    ) %>%
+    mutate(
+      red_matrix_effect = (((T_Red - F_Red)/F_Standard) - 1)*100,
+      yellow_matrix_effect = (((T_Yellow - F_Yellow)/F_Standard) - 1)*100
+    )
+}
+
+# Read and process data
+matrix_effect_low <- read_xlsx("data/voc_matrix_effect.xlsx", "Matrix low split") %>% 
+  filter(!ID %in% c("R8","Y8")) %>% 
+  calculate_matrix_effect(col_range = 4:28)
+
+matrix_effect_high <- read_xlsx("data/voc_matrix_effect.xlsx", "matrix high split") %>%
+  calculate_matrix_effect(col_range = 4:7)
+
+# Combine and clean species names
+matrix_effect <- rbind(matrix_effect_high, matrix_effect_low) %>%
+  mutate(species = str_replace_all(species, "-", "_"))
+
+print(knitr::kable(matrix_effect[,c(1,7:8)],
+      col.names = c("Flesh Color",
+                    "Matrix effect red",
+                    "Matrix effect yellow"),
+      digits = 1,
+      align = c('l', 'c', 'c'),
+      caption = "matrix effect for VOC quantification"))
+```
+
+-   Transforming VOC data to ng/kg
+
+```{r VOC transformations, collapse=TRUE, cache=TRUE, dependson="VOC Matrix Effect"}
+calibration_table <- read_excel("data/Results_22_23.xlsx", "densities") %>% 
+  select(Hexanal:Linalool) %>% 
+  t() %>% as.data.frame() %>% rownames_to_column("species") %>% 
+  set_names(c("species", "densities", "OT", "purity"))
+
+res_sheets <- c("Aug22", "Feb23", "Feb24")
+
+VOCs <- res_sheets %>%
+  # Read and combine sheets
+  map(~read_excel("data/Results_22_23.xlsx", .x) %>%
+        pivot_longer(cols = (Hexanal:BITC),
+                     names_to = "species",
+                     values_to = "concentration") %>%
+        mutate(assay = .x,
+               Genotype = as.factor(Genotype))) %>%
+  list_rbind() %>%
+  
+  # Clean and join data
+  mutate(Genotype = str_replace_all(Genotype, c("RB1_3" = "RB1", "Holland_5_3" = "Holland_5"))) %>%
+  left_join(calibration_table) %>%
+  left_join(genotype_table) %>%
+  
+  # Calculate concentrations
+  mutate(
+    conc_ppb = (concentration * densities * purity) * (0.00425/0.0042), # ug/L -> ug/KgFW = ug/L * volume(L)/mass(Kg)
+    species = str_replace_all(species, "-", "_")) %>%
+  
+  # update matrix corrections
+  left_join(
+    matrix_effect %>% 
+      mutate(across(
+        ends_with("matrix_effect"),
+        ~ case_when(
+          species %in% c("Linalool","Linalool_oxide") ~ .[species == "Trans_Linalool oxide (furanoid)"],
+          TRUE ~ .
+          )
+        ))
+    ) %>%
+  
+   # Apply matrix corrections 
+  mutate(
+    corrected_conc_ppb = case_when(
+      Flesh == "Red" ~ conc_ppb / (1 + (red_matrix_effect/100)),
+      Flesh == "Yellow" ~ conc_ppb / (1 + (yellow_matrix_effect)/100)
+      ),
+    OAV = corrected_conc_ppb/OT,
+    ) %>%
+  relocate(c(assay, Flesh, label), .before = species)
+
+# summary of VOC concentrations
+
+VOC_summary <- VOCs %>%
+  group_by(species) %>%
+  summarise(
+    n = n(),                                    
+    mean_conc = mean(corrected_conc_ppb, na.rm = TRUE),
+    sd_conc = sd(corrected_conc_ppb, na.rm = TRUE),      
+    se_conc = sd_conc/sqrt(n),                 
+    median_conc = median(corrected_conc_ppb, na.rm = TRUE),
+    min_conc = min(corrected_conc_ppb, na.rm = TRUE),
+    max_conc = max(corrected_conc_ppb, na.rm = TRUE),
+    n_detected = sum(corrected_conc_ppb>0.01),        
+    perc_detected = n_detected/n * 100         
+  ) %>%
+  arrange(desc(mean_conc)) %>%  
+  mutate(across(where(is.numeric), ~ round(.x, digits = 2))) %>% 
+  ungroup() 
+
+
+
+```
+
+-   Sugar extraction efficiency
+
+```{r Sugar extraction efficiency, collapse=TRUE, cache=TRUE}
+sugar_key <- read_xlsx("data/July24_all.xlsx", sheet = "eth_key")
+extraction_efficiency <-
+  left_join(sugar_key, read_xlsx("data/July24_all.xlsx",
+            sheet = "all_raw"), by = "sample_id") %>%
+  filter(batch_id == "pooled") %>%
+  mutate(
+    Flesh = c(rep("Yellow", 5), rep("Red", 5)),
+    Sorbitol_extraction_prop = Sorbitol/20000
+  ) %>%
+  group_by(Flesh) %>%
+  summarise(
+    extraction_efficiency_mean = mean(Sorbitol_extraction_prop*100),
+    extraction_efficiency_sd = sd(Sorbitol_extraction_prop*100)
+  )
+print(knitr::kable(extraction_efficiency,
+      col.names = c("Flesh Color",
+                    "Mean Recovery (%)",
+                    "SD (%)"),
+      digits = 1,
+      align = c('l', 'c', 'c'),
+      caption = "Sorbitol extraction efficiency from freeze-dried tissue samples"))
+
+```
+
+-   Sugar data unit transformation and imputation of missing values
+
+```{r Sugar_transformation, cache=TRUE, cache.lazy=FALSE, dependson="Sugar extraction efficiency", collapse=TRUE}
+bad_dry <- paste0("JL", 10:53) # compromised samples
+UI <- paste0("UI", 1:5) # auxiliary samples
+
+# Data import and initial cleaning
+raw_sugar <- left_join(sugar_key,
+                      read_xlsx("data/July24_all.xlsx", sheet = "all_raw"),
+                      by = "sample_id") %>%
+  filter(!sample_id %in% bad_dry,
+         !sensory_id %in% UI,
+         batch_id != "pooled",
+         mass != "75") %>% # auxiliary sample
+  select(-c(sample_id, Sorbitol, batch_id)) %>%
+  rename(ID = sensory_id) %>%
+  full_join(genotype_table, by = "ID") %>%
+  left_join(read_xlsx("data/July24_all.xlsx", sheet = "weight"),
+            by = "ID") %>%
+  mutate(FW_factor = wet_fraction/dry_fraction)
+
+# Missing values
+na_rows <- raw_sugar[!complete.cases(raw_sugar),]
+print(knitr::kable(na_rows,
+                   caption = "Missing values in sugar dataset"))
+
+# Get all imputed datasets using default parameters
+set.seed(11)
+
+imp <- mice::mice(raw_sugar, m = 25, maxit = 100, print = FALSE)
+
+imputed_sugar <- complete(imp, "long") %>%
+  group_by(ID) %>%
+  summarise(across(c(mass, FW_factor, Glucose, Fructose, Sucrose), mean))
+
+# new dataset with mean values from 25 random imputations after 100 iterations
+final_sugar <- raw_sugar %>%
+  select(-c(mass, FW_factor, Glucose, Fructose, Sucrose)) %>%
+  left_join(imputed_sugar, by = "ID")
+
+# Unit transformation of raw data to g sugar/100g FW
+sugar_vars <- c("Glucose", "Fructose", "Sucrose")
+
+sugar_data <- final_sugar %>%
+  mutate(across(all_of(sugar_vars), ~.x * 0.001),  # Accounts for 0.001L extraction volume
+         FW = mass * FW_factor,                      # Converts to fresh weight basis
+         across(all_of(sugar_vars), ~(.x / FW) * 100),  # Convert to g/100g FW
+         total_sugar = rowSums(across(all_of(sugar_vars))),
+         across(all_of(sugar_vars), ~.x / total_sugar, .names = "{.col}_prop"),
+         wet_fraction = FW_factor/(1+FW_factor),
+         dry_fraction = 1-wet_fraction) %>%
+  select(assay, Genotype, ID, Flesh, all_of(sugar_vars),
+         total_sugar, ends_with("_prop"),label,wet_fraction)
+
+glimpse(sugar_data)
+```
+
+-   Glucotropaeolin unit transformation and QC analysis
+
+```{r GTR data, warning=FALSE, cache=TRUE, cache.lazy=FALSE, dependson="Sugar_transformation", collapse=TRUE}
+# Read sample metadata and define sample IDs
+GTR_key <- read_xlsx("data/July24_all.xlsx", sheet = "meth_key")
+samples <- paste0("ME", seq(10, 136))
+
+# Process GTR (Glucotropaeolin) concentration data
+# Initial concentration in mg/L (mg glucotropaeolin per L methanol extract)
+GTR_data <- read_xlsx("data/GTR_data.xlsx", sheet = "GTR") %>%
+  # Filter relevant samples
+  filter(sample_id %in% samples) %>%
+
+  # Handle non-detects: replace 'n.a.' with detection limit (0.0001 mg/L)
+  mutate(
+    conc = str_replace(conc, "n.a.", "0.0001"),
+    conc = as.numeric(conc)
+  ) %>%
+
+  # Reassign sample IDs and remove duplicate
+  mutate(sample_id = paste0("ME", seq(10, 135))) %>%
+  filter(!sample_id %in% c("ME12","ME57")) %>%
+
+  # Join with sample metadata and moisture content data
+  left_join(GTR_key) %>%
+  rename(ID = sensory_id) %>%
+  left_join(imputed_sugar %>% select(ID, FW_factor)) %>%
+
+  # Convert concentration from mg/L to mg/kgFW
+  # Step 1: mg/L * (0.001L/mass_mg) = mg/mgDW
+  # Step 2: mg/mgDW / FW_factor = mg/mgFW
+  # Step 3: mg/mgFW * 100000 = mg/kgFW
+  mutate(
+    conc = ((conc * (0.001/mass))/FW_factor) * 100000
+  ) %>%
+
+  # Clean up column names and select final variables
+  rename(GTR_conc = conc) %>%
+  select(ID, GTR_conc) %>% 
+  filter(!ID %in% UI)
+
+# Calculate Quality Control metrics for Continuing Calibration Verification (CCV) samples
+# Reference standard (1 mg/L) analyzed every 10 samples
+CCV_samples <- read_xlsx("data/GTR_data.xlsx", sheet = "GTR") %>%
+  mutate(conc = as.numeric(conc)) %>%
+  filter(sample_id == "STD_1ppm") %>%
+  summarise(
+    mean_conc = mean(conc),
+    sd_conc = sd(conc),
+    rsd_percent = (sd_conc/mean_conc) * 100
+  )
+
+# Display QC results
+print(knitr::kable(CCV_samples,
+                   caption = "Quality Control Metrics for 1 mg/L Reference Standard (n=14)",
+                   col.names = c("Mean (mg/L)", "SD (mg/L)", "RSD (%)"),
+                   digits = c(4, 4, 2)))
+
+```
+
+-   Combining data and imputing missing data
+
+```{r combine data, cache=TRUE, cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR data","Sugar_transformation","OC transformations")}
+# Load proxy sugar/acid data, excluding redundant Genotype column
+proxy <- read_xlsx("data/22_23_proxy_sugar.xlsx", "all") %>% select(-Genotype)
+
+# Combine multiple datasets
+conc_matrix <- full_join(sugar_data, GTR_data, relationship = "many-to-many") %>%  
+  full_join(proxy, relationship = "many-to-many") %>% 
+  full_join(VOCs, relationship = "many-to-many") %>% 
+  # Remove auxiliary samples
+  filter(!ID %in% c("01-1","02-1","03-1","04-1","05-1","07-1")) %>% 
+  # Remove intermediate calculation columns
+  select(-c(concentration:purity,conc_ppb:yellow_matrix_effect,OAV)) %>% 
+  # Reshape data for analysis
+  pivot_wider(names_from = species, 
+              values_from = corrected_conc_ppb)
+
+# missing results
+print(knitr::kable(conc_matrix[!complete.cases(conc_matrix),],
+                   caption = "Results with missing values",
+                   digits = 1))
+
+# Get all imputed datasets using default parameters
+imp_vars <- c("GTR_conc","pH","Brix","TA")
+
+set.seed(11)
+init <- mice::mice(conc_matrix,maxit=0)
+init$predictorMatrix[,] <- 0 
+init$predictorMatrix[imp_vars, c(sugar_vars,"BITC")] <- 1
+
+imp2 <- mice::mice(conc_matrix, predictorMatrix = init$predictorMatrix, m = 25, maxit = 100, print = FALSE)
+
+imputed_conc <- complete(imp2, "long") %>%
+  group_by(ID) %>%
+  summarise(across(all_of(imp_vars), mean))
+
+# new dataset with mean values from 25 random imputations after 100 iterations (probably overkill)
+final_conc_matrix <- conc_matrix %>%
+  select(-(all_of(imp_vars))) %>%
+  left_join(imputed_conc, by = "ID") %>% 
+  relocate(all_of(imp_vars), .before = Hexanal)
+
+# Attaching sensory data
+full_data_matrix <- final_conc_matrix %>% left_join(read_xlsx("data/all_sensory_data.xlsx"))
+
+# full_data_matrix %>% select(Flesh, sweetness_FL, Sulcatone, Heptanal) %>% print(n=118)
+  
+data_summary_genotype <- 
+  full_data_matrix %>%
+  group_by(Genotype) %>%
+  summarise(across(where(is.numeric),
+                   ~sprintf("%.2f (%.2f)", mean(.x), sd(.x)))) %>%
+  pivot_longer(cols = -Genotype, names_to = "variable") %>%
+  pivot_wider(names_from = Genotype, values_from = value)
+  
+```
+
+## Sensory and metabolite data sumary
+
+```{r sesnsory/metabolite data summary}
+print(summarytools::dfSummary(full_data_matrix,
+                graph.magnif = 0.82,
+                varnumbers = FALSE,
+                style = "grid",
+                valid.col = TRUE,  # Changed to TRUE to match your desired output
+                graph.col = TRUE),  # Added to ensure graphs are displayed
+      method = 'render',  # Important for proper HTML rendering
+      table.classes = 'st-table st-table-bordered st-table-striped')
+```
+
+## Sensory and metabolite Principal Component Analysis
+
+Metabolites with odour activity values less than one likely play a very minor role in fruit flavour; due to the small ranges and fluctuations, their influence on flavour may be overestimated in modelling. Moreover, sensory terms including prickly aftertaste and metallic aftertaste poorly differentiated the genotypes throughout descriptive analysis. Therefore these variables were removed to focus on highly relevant flavour variables.
+
+```{r OAV assessment, cache=T}
+# cut VOC variables
+no_aroma <- VOCs %>% 
+  select(1:6,OAV) %>% 
+  pivot_wider(names_from = species, values_from = OAV) %>% 
+  select(Hexanal:BITC) %>% 
+  summarise(across(where(is.numeric), ~ max(.x, na.rm = TRUE))) %>%
+  select(where(function(x) any(x<1))) %>% 
+  colnames()
+
+# cut sensory variables
+poor_lexicon_use <- c("prickly_AT", "metallic_AT")
+```
+
+Once these variables were removed the data was visualised using PCA to look at sensory and metabolite profiles of each genotype.
+
+```{r PCA sensory, fig.width=10, fig.height=8, fig.dpi=600, cache=TRUE}
+# data set up
+remove_vars <- c("Glucose_prop","Fructose_prop","Sucrose_prop","label","Genotype2")
+PCA_data <- full_data_matrix %>% 
+  column_to_rownames(var = "ID") %>% 
+  select(-all_of(c(poor_lexicon_use, no_aroma,remove_vars,"Beta_Cyclocitral")))
+# Beta_Cyclocitral appears to have very low range and is exacerbating small differences due to presence absence
+
+# PCA script custom bi-plot
+PCA_vocs <- PCA(PCA_data, scale.unit = TRUE, 
+                ncp = 5, graph = F, 
+                quali.sup = 1:31) # omit all but sensory columns
+ 
+# make a list of top variables based on visual assessment
+topvars <- PCA_vocs$var$contrib [,1:2] %>% as.data.frame() %>% 
+  rownames_to_column(var = "species") %>% mutate (contribution = Dim.1 + Dim.2) %>% 
+  top_n(17, contribution)
+
+# make a dataframe with variable coordinates for arrows
+PCAvar_coords <- PCA_vocs$var$coord[topvars$species,] %>% 
+  as.data.frame() %>% 
+  select(1:2) %>% 
+  rownames_to_column(var = "var") %>% 
+  left_join(sensory_meta) %>% 
+  mutate(Category = snakecase::to_title_case(group),
+         sensory_label = snakecase::to_sentence_case(sub("_[A-Z]+$", "", var))) 
+
+# create a scale value to the size of the scatter plot to adjust variable coordinates
+var <- facto_summarize(PCA_vocs, 
+                       element = "var", 
+                       result = c("coord", "contrib", "cos2"))
+
+colnames(var)[2:3] <- c("x", "y")
+
+ind <- data.frame(PCA_vocs$ind$coord[, drop = FALSE], 
+                  stringsAsFactors = TRUE)
+
+colnames(ind) <- c("x", "y")
+
+r <- min((max(ind[, "x"]) - min(ind[, "x"])/(max(var[, "x"]) - min(var[, "x"]))), 
+         (max(ind[, "y"]) - min(ind[, "y"])/(max(var[,"y"]) - min(var[, "y"]))))
+
+# update the variable coordinates
+
+PCAvar_plot_data <- PCAvar_coords %>% 
+                    as_tibble() %>% 
+                    mutate(across(starts_with("Dim"), ~r*0.6*.x)) # this number scales arrow length
+
+# get coordinates for individuals to map group means with meta data for aesthetics
+PCAvoctable <- PCA_vocs$ind$coord %>% 
+               as.data.frame() %>% 
+               rownames_to_column("ID") %>% 
+               left_join(genotype_table)
+
+# create a table with the average coordinates for each phenotype
+Mean_coords <- PCAvoctable %>% 
+               group_by(label) %>% 
+               summarise(across(where(is.numeric), ~mean(.x, na.rm = TRUE))) %>%
+               left_join(genotype_table %>% distinct(label,Flesh, Genotype, Genotype2, assay))
+
+
+# choose colours
+my_colours <- c("#E31A1C","gold2")
+
+
+# Get component variance information for axis labels
+percentVar <- PCA_vocs$eig[1:2,2]
+
+#plot PCA coords using ggplot
+
+ggplot(Mean_coords) + 
+  aes(x = Dim.1, y = Dim.2, fill = Flesh, shape = assay) + 
+  geom_hline(yintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_vline(xintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_segment(mapping = aes(colour=group, xend=Dim.1, yend=Dim.2), 
+               data = PCAvar_plot_data,
+               inherit.aes = F,
+               x=0, y=0, linewidth=0.3,
+               arrow = arrow(angle = 30, length = unit(0.2, "cm"))) +
+  geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
+                  data = PCAvar_plot_data,
+                  inherit.aes = F,
+                  hjust=-0.15, vjust=0.20, size=3.2, box.padding = 0.1) + 
+  scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090")) +
+  geom_point(alpha = 1, size=2.5) +
+  theme_bw() + theme(plot.background = element_blank(), 
+                     panel.grid.major = element_blank(), 
+                     panel.grid.minor = element_blank(),
+                     axis.title = element_text(size=12)) +
+  geom_text_repel(label = Mean_coords$Genotype2, 
+                  size=3, hjust=-0.2, vjust=0.5, box.padding = 0.2,
+                  colour = "black", fontface = "italic") +
+   scale_shape_manual(values = c(21,22,24)) +scale_fill_manual(values = my_colours) +
+  guides(colour=guide_legend(override.aes = list(label="")))+
+  scale_fill_identity(guide = guide_legend(override.aes = list(shape = 21))) +
+  labs( x=glue::glue("C1: {round(percentVar[1],2)}% variance"),
+        y=glue::glue("C2: {round(percentVar[2],2)}% variance"), fill="Flesh", 
+        colour="Attribute", shape = "Havest Month") 
+```
+
+### Figure 1: PCA biplot of 27 papaya genotype dipicting the variations in sensory profiles from quantitative descriptive analysis.
+
+```{r PCA metabolites, fig.width=10, fig.height=8, fig.dpi=600, cache=TRUE}
+PCA_vocs <- PCA(PCA_data, scale.unit = TRUE, 
+                ncp = 6, graph = F, 
+                quali.sup = c(1:3,31:48)) # all chem PCA
+
+# make a list of top variables based on visual assessment
+topvars <- PCA_vocs$var$contrib [,1:2] %>% as.data.frame() %>% 
+  rownames_to_column(var = "species") %>% mutate (contribution = Dim.1 + Dim.2) %>% 
+  top_n(22, contribution)
+
+# make a dataframe with variable coordinates for arrows
+PCAvar_coords <- PCA_vocs$var$coord[topvars$species,] %>% 
+  as.data.frame() %>% 
+  select(1:2) %>% 
+  rownames_to_column(var = "var") %>% 
+  left_join(class_key, by = "var") %>% 
+  mutate(var=str_replace_all(var, c("Neryl_Geranyl_acetone" = "Neryl/Geranyl Acetone", "E_2_nonal"="E-2-Nonanal","P_cymene"="P-Cymene","_"=" ")), group=str_replace_all(group, c("Acids"="Sugar/acid","Sugars"="Sugar/acid")))
+
+# create a scale value to the size of the scatter plot to adjust variable coordinates
+var <- facto_summarize(PCA_vocs, 
+                       element = "var", 
+                       result = c("coord", "contrib", "cos2"))
+
+colnames(var)[2:3] <- c("x", "y")
+
+ind <- data.frame(PCA_vocs$ind$coord[, drop = FALSE], 
+                  stringsAsFactors = TRUE)
+
+colnames(ind) <- c("x", "y")
+
+r <- min((max(ind[, "x"]) - min(ind[, "x"])/(max(var[, "x"]) - min(var[, "x"]))), 
+         (max(ind[, "y"]) - min(ind[, "y"])/(max(var[,"y"]) - min(var[, "y"]))))
+
+# update the variable coordinates
+
+PCAvar_plot_data <- PCAvar_coords %>% 
+  as_tibble() %>% 
+  mutate(across(starts_with("Dim"), ~r*0.6*.x))
+
+# get coordinates for individuals to map group means with meta data for aesthetics
+PCAvoctable <- PCA_vocs$ind$coord %>% 
+  as.data.frame() %>% 
+  rownames_to_column("ID") %>% 
+  left_join(genotype_table)
+
+# create a table with the average coordinates for each phenotype
+Mean_coords <- PCAvoctable %>% 
+  group_by(label,Flesh) %>% 
+  summarise(across(where(is.numeric), ~mean(.x, na.rm = TRUE))) %>%
+  left_join(genotype_table %>% distinct(label, Flesh, Genotype, Genotype2,assay))
+
+# choose colours
+my_colours <- c("#E31A1C","gold2")
+
+
+# Get component variance information for axis labels
+percentVar <- PCA_vocs$eig[1:2,2]
+
+#plot PCA coords using ggplot
+
+ggplot(Mean_coords) + 
+  aes(x = Dim.1, y = Dim.2, fill = Flesh, shape = assay) + 
+  geom_hline(yintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_vline(xintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_segment(mapping = aes(colour=group, xend=Dim.1, yend=Dim.2), 
+               data = PCAvar_plot_data,
+               inherit.aes = F,
+               x=0, y=0, linewidth=0.3,
+               arrow = arrow(angle = 30, length = unit(0.2, "cm"))) +
+  geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
+                  data = PCAvar_plot_data,
+                  inherit.aes = F,
+                  hjust=0.3, vjust=-0.6, size=3.2, box.padding = 0.1) + 
+  scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090","darkorange")) +
+  geom_point(alpha = 1, size=2.5) +
+  theme_bw() + theme(plot.background = element_blank(), 
+                     panel.grid.major = element_blank(), 
+                     panel.grid.minor = element_blank(),
+                     axis.title = element_text(size=12)) +
+  geom_text_repel(label = Mean_coords$Genotype2, 
+                  size=3, hjust=1.1, vjust=1.2, box.padding = 0.1,
+                  colour = "black", fontface = "italic") +
+  scale_shape_manual(values = c(21,22,24)) +scale_fill_manual(values = my_colours) +
+  guides(colour=guide_legend(override.aes = list(label="")))+
+  scale_fill_identity(guide = guide_legend(override.aes = list(shape = 21))) +
+  labs( x=glue::glue("C1: {round(percentVar[1],2)}% variance"),
+        y=glue::glue("C2: {round(percentVar[2],2)}% variance"), fill="Flesh", 
+        colour="Attribute", shape = "Havest Month")
+```
+
+### Figure 2: PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype.
+
+There appears to be a significant batch effect associated with metabolites with highly skewed distributions. After removing decanal, methyl hexanoate, octanal, (E)-2-nonanal and nonanal, the control genotypes are qualitatively similar in distance to what is observed in the sensory data.
+
+```{r PCA metabolites new, fig.width=10, fig.height=8, fig.dpi=600, cache=TRUE}
+PCA_vocs <- PCA(PCA_data, scale.unit = TRUE,
+                ncp = 6, graph = F,
+                quali.sup = c(1:3,21,23:26,31:48)) # omit decanal, methyl hexanoate, octanal, (E)-2-nonanal, nonanal
+
+# make a list of top variables based on visual assessment
+topvars <- PCA_vocs$var$contrib [,1:2] %>% as.data.frame() %>%
+  rownames_to_column(var = "species") %>% mutate (contribution = Dim.1 + Dim.2) %>%
+  top_n(22, contribution)
+# make a dataframe with variable coordinates for arrows
+PCAvar_coords <- PCA_vocs$var$coord[topvars$species,] %>%
+  as.data.frame() %>%
+  select(1:2) %>%
+  rownames_to_column(var = "var") %>%
+  left_join(class_key) %>%
+  mutate(var=str_replace_all(var, c("Neryl_Geranyl_acetone" = "Neryl/Geranyl Acetone", "E_2_nonal"="E-2-Nonanal","P_cymene"="P-Cymene","_"=" ")), group=str_replace_all(group, c("Acids"="Sugar/acid","Sugars"="Sugar/acid")))
+
+# create a scale value to the size of the scatter plot to adjust variable coordinates
+var <- facto_summarize(PCA_vocs,
+                       element = "var",
+                       result = c("coord", "contrib", "cos2"))
+
+colnames(var)[2:3] <- c("x", "y")
+
+ind <- data.frame(PCA_vocs$ind$coord[, drop = FALSE],
+                  stringsAsFactors = TRUE)
+
+colnames(ind) <- c("x", "y")
+
+r <- min((max(ind[, "x"]) - min(ind[, "x"])/(max(var[, "x"]) - min(var[, "x"]))),
+         (max(ind[, "y"]) - min(ind[, "y"])/(max(var[,"y"]) - min(var[, "y"]))))
+
+# update the variable coordinates
+
+PCAvar_plot_data <- PCAvar_coords %>%
+  as_tibble() %>%
+  mutate(across(starts_with("Dim"), ~r*0.6*.x))
+
+# get coordinates for individuals to map group means with meta data for aesthetics
+PCAvoctable <- PCA_vocs$ind$coord %>%
+  as.data.frame() %>%
+  rownames_to_column("ID") %>%
+  left_join(genotype_table)
+
+# create a table with the average coordinates for each phenotype
+Mean_coords <- PCAvoctable %>%
+  group_by(label,Flesh) %>%
+  summarise(across(where(is.numeric), ~mean(.x, na.rm = TRUE))) %>%
+  left_join(genotype_table %>% distinct(label, Flesh, Genotype, Genotype2,assay))
+
+# choose colours
+my_colours <- c("#E31A1C","gold2")
+
+
+# Get component variance information for axis labels
+percentVar <- PCA_vocs$eig[1:2,2]
+
+#plot PCA coords using ggplot
+
+ggplot(Mean_coords) +
+  aes(x = Dim.1, y = Dim.2, fill = Flesh, shape = assay) +
+  geom_hline(yintercept = 0, alpha = 0.6,
+             linetype="dashed", linewidth=0.5) +
+  geom_vline(xintercept = 0, alpha = 0.6,
+             linetype="dashed", linewidth=0.5) +
+  geom_segment(mapping = aes(colour=group, xend=Dim.1, yend=Dim.2),
+               data = PCAvar_plot_data,
+               inherit.aes = F,
+               x=0, y=0, linewidth=0.3,
+               arrow = arrow(angle = 30, length = unit(0.2, "cm"))) +
+  geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
+                  data = PCAvar_plot_data,
+                  inherit.aes = F,
+                  hjust=0.3, vjust=-0.6, size=3.2, box.padding = 0.1) +
+  scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090","darkorange")) +
+  geom_point(alpha = 1, size=2.5) +
+  theme_bw() + theme(plot.background = element_blank(),
+                     panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank(),
+                     axis.title = element_text(size=12)) +
+  geom_text_repel(label = Mean_coords$Genotype2,
+                  size=3, hjust=1.1, vjust=1.2, box.padding = 0.1,
+                  colour = "black", fontface = "italic") +
+  scale_shape_manual(values = c(21,22,24)) +scale_fill_manual(values = my_colours) +
+  guides(colour=guide_legend(override.aes = list(label="")))+
+  scale_fill_identity(guide = guide_legend(override.aes = list(shape = 21))) +
+  labs( x=glue::glue("C1: {round(percentVar[1],2)}% variance"),
+        y=glue::glue("C2: {round(percentVar[2],2)}% variance"), fill="Flesh",
+        colour="Attribute", shape = "Havest Month")
+```
+
+### Figure 3: PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype. Excluding decanal, methyl hexanoate, octanal, (E)-2-nonanal and nonanal.
+
+## Modelling the interactions between sensory and metabolite profiles
+
+Variable influences on traits were assessed using two complementary approaches: (1) generalised boosted regression (Friedman, 2001) to capture both main effects and interactions (x-axis), optimized using 10-fold cross-validation, and (2) Bayesian linear regression (BayesA; Meuwissen et al., 2001) to estimate individual additive effects without interactions (y-axis). Only variables that stood out from the rest were labelled due to space limitations.
+
+```{r Sensory modelling, cache=TRUE, results='hide', message=FALSE, warning=FALSE}
+scaled_matrix <- PCA_data %>% select(-c(1:3,21,23:26)) %>% scale()
+
+# Sensory subsetting
+# column naming
+traits <- colnames(scaled_matrix) [23:40]
+gbm_name <- c(seq(from = 1, to = 35, by = 2))
+beta_name <- c(seq(from = 2, to = 36, by = 2))
+
+set.seed(11)
+
+for (i in 1:18) {
+  
+  # caret GBM
+  carX <- as.matrix(cbind(Y=scaled_matrix[,22+i], scaled_matrix[,1:22]))
+  
+  grid <- expand.grid(.n.trees = c(500, 750, 1000), 
+                      .interaction.depth = c(5,7,10), 
+                      .shrinkage = c(0.01,0.02,0.05), 
+                      .n.minobsinnode = c(3,5))
+  
+  trnCtrl <- trainControl(method = "cv", number = 10)
+  
+  gbm <- train(Y ~ ., data = carX, method = "gbm", trControl = trnCtrl, tuneGrid = grid)
+  
+  # BGLR
+  trnY <- scaled_matrix[,22+i]
+  
+  ETA <- list(list(X = scaled_matrix[,1:22], model = 'BayesA'))
+  
+  fit_BA <- BGLR(y = trnY, 
+                 ETA = ETA, 
+                 nIter = 30000, 
+                 burnIn = 10000,
+                 thin = 100, 
+                 saveAt = '', 
+                 df0 = 5, 
+                 S0 = NULL,
+                 weights = NULL, 
+                 R2 = 0.5)
+
+ # write results table
+  if(i == 1){
+    wts <- as.data.frame(varImp(object = gbm)$importance) %>% 
+           cbind(fit_BA$ETA[[1]]$b)
+    names(wts)[i] <- paste0(traits[i],"_gbm")
+    names(wts)[i+1] <- paste0(traits[i],"_beta")
+  } else {
+    wts <- cbind(wts,varImp(object = gbm)$importance,fit_BA$ETA[[1]]$b)
+    names(wts)[gbm_name[i]] <- paste0(traits[i],"_gbm")
+    names(wts)[beta_name[i]] <- paste0(traits[i],"_beta")
+  }
+}
+```
+
+```{r aroma metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+# Plot prep ------------
+bglr_data <- wts %>% 
+  select(all_of(beta_name)) %>% 
+  rownames_to_column(var = "var") %>% 
+  left_join(class_key) %>% 
+  pivot_longer(cols = 2:19, values_to = "y", names_to = "trait") %>% 
+  mutate(trait=str_replace_all(trait,"_beta",""))
+
+gbm_data <- wts %>% 
+  select(all_of(gbm_name)) %>% 
+  rownames_to_column(var = "var") %>% 
+  left_join(class_key) %>% 
+  pivot_longer(cols = 2:19, values_to = "x", names_to = "trait") %>% 
+  mutate(trait=str_replace_all(trait,"_gbm",""))
+
+all_plot_data <- left_join(bglr_data,gbm_data[c(1,4:5)],by=c("var" = "var", "trait" = "trait")) %>% 
+                mutate(sensory_group = str_sub(trait, - 2, - 1),
+                       trait_label = str_sub(trait,0,-4),
+                       trait_label = str_replace_all(trait_label,"_"," "),
+                       trait_label = str_to_sentence(trait_label),
+                       label = str_replace_all(label,c("total sugar"="Total sugar",
+                                                       "wet fraction"="Water content")))
+# Filter for AR labels -------
+ar_label <- 
+  rbind(
+    all_plot_data %>% filter(sensory_group == "AR") %>% 
+      group_by(trait) %>% slice_min(y, n=4),
+    
+    all_plot_data %>%  filter(sensory_group == "AR") %>% 
+      group_by(trait) %>% slice_max(y, n=4),
+    
+    all_plot_data %>% filter(sensory_group == "AR") %>% 
+      group_by(trait) %>% slice_max(x, n=8)) %>%
+  
+  distinct()
+  
+my_colours <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                  "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22")
+
+# Need labels to remove
+# Determined by initially plotting AR_label 
+
+AR_intensity <- c("Terpinolene","Heptanal","Terpinene","(E/Z)-Geranylacetone","Sucrose",
+                  "Hexanal")
+AR_citrus <- c("Glucose","Hexanal","Limonene","Sucrose","Heptanal","Sulcatone","β-Ionone","Terpinene")
+AR_fishy <- c("Sucrose","Glucose","P-Cymene","pH","β-Ionone","Sulcatone","TA")
+AR_floral <- c("(E/Z)-Geranylacetone","β-Ionone", "Hexanal","Sulcatone","(E/Z)-Geranylacetone")
+AR_musty <- c("Linalool oxide", "Terpinolene", "GTR","(E/Z)-Geranylacetone")
+AR_sweet <- c("BITC","β-Ionone","Linalool oxide","P-Cymene","Hexanal","GTR","pH","Total sugar")
+
+# Filter labels and plot
+
+ar_label1 <- ar_label %>%
+  filter(!label %in% AR_intensity & trait=="aroma_intensity_AR"|
+         !label %in% AR_citrus & trait == "citrus_AR" |
+         !label %in% AR_fishy & trait == "fishy_AR"|
+         !label %in% AR_floral & trait == "floral_AR"|
+         !label %in% AR_musty & trait == "musty_off_note_AR"|
+         !label %in% AR_sweet & trait == "sweet_fruit_AR")
+  
+
+#plot AROMA trait variables
+ggplot(all_plot_data %>% filter(sensory_group == "AR")) +
+  aes(x = x, y = y,
+      fill = group,
+      colour = group,
+      label = label) +
+
+  # Base plot elements
+  geom_hline(yintercept = 0,
+             alpha = 0.6,
+             linetype = "dashed",
+             linewidth = 0.5) +
+  geom_point(shape = 21,
+             alpha = 0.7,
+             size = 2.5) +
+
+  # Faceting and coordinates
+  facet_wrap(vars(trait_label)) +
+  xlim(0, 100) +
+  ylim(min(all_plot_data[all_plot_data$sensory_group=="AR",] %>% select(y)), 
+       max(all_plot_data[all_plot_data$sensory_group=="AR",] %>% select(y))) +
+
+
+  # Labels
+  labs(x = "Variable importance (GBM)",
+       y = expression(beta~"coefficient (BayesA)"),
+       fill = "") +
+
+  # Point labels
+  geom_text_repel(data = ar_label1,
+                  aes(x = x, y = y,
+                      label = label,
+                      color = group),
+                  hjust = -.1,
+                  vjust = -0.4,
+                  size = 3,
+                  box.padding = 0.1) +
+
+  # Colours and guides
+  scale_fill_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                              "Phenylalanine-derived", "Sugars",
+                              "Acids", "Other"),
+                   values = my_colours) +
+  scale_color_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                               "Phenylalanine-derived", "Sugars",
+                               "Acids", "Other"),
+                    values = my_colours) +
+  guides(colour = "none") +
+
+  # Theme customisation
+  theme_bw() +
+  theme(
+    plot.background = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_rect(linetype = "solid", colour = "Black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = 11),
+    axis.title.x = element_text(vjust = -2),
+    axis.title.y = element_text(vjust = 2),
+    axis.text = element_text(size = 8),
+    legend.background = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 11, face = "bold"),
+    panel.spacing.y = unit(0, "cm", data = NULL),
+    legend.position = "bottom"
+  )
+```
+
+### Figure 4: Variation in papaya aroma characteristics explained by targeted metabolites in 27 papaya genotypes.
+
+```{r Flavour metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+
+# Filter for FL labels -------
+FL_label <- 
+  rbind(
+    all_plot_data %>% filter(sensory_group == "FL") %>% 
+      group_by(trait) %>% slice_min(y, n=5), 
+    all_plot_data %>% filter(sensory_group == "FL") %>% 
+      group_by(trait) %>% slice_max(y, n=5),
+    all_plot_data %>% filter(sensory_group == "FL") %>% 
+      group_by(trait) %>% slice_max(x, n=8)) %>% 
+  distinct()
+
+my_colours <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22")
+
+# Need labels to remove
+# Determined by initially plotting FL_label 
+
+FL_bitterness <- c("γ-Octalactone", "Sucrose","Hexanal","(E/Z)-Geranylacetone","β-Ionone","Glucose","Terpinolene","Water fraction","Brix")
+FL_intensity <- c("Sulcatone", "β-Ionone","Linalool","TA","BITC")
+FL_floral <- c("Brix","Linalool oxide","(E/Z)-Geranylacetone","Terpinene")
+FL_musty <- c("Terpinene","Sulcatone")
+FL_sweet <- c("Fructose","Linalool oxide","Glucose","GTR", "TA","pH","γ-Octalactone")
+
+# Filter labels and plot
+
+FL_label1 <- FL_label %>%
+  filter(!label %in% FL_bitterness & trait=="bitterness_FL"|
+           !label %in% FL_intensity & trait == "flavour_intensity_FL" |
+           !label %in% FL_floral & trait == "floral_FL"|
+           !label %in% FL_musty & trait == "musty_FL"|
+           !label %in% FL_sweet & trait == "sweetness_FL")
+
+
+# Plot flavour trait variables
+ggplot(all_plot_data %>% filter(sensory_group == "FL")) +
+  aes(x = x, y = y,
+      fill = group,
+      colour = group,
+      label = label) +
+
+  # Base plot elements
+  geom_hline(yintercept = 0,
+             alpha = 0.6,
+             linetype = "dashed",
+             linewidth = 0.5) +
+  geom_point(shape = 21,
+             alpha = 0.7,
+             size = 2.5) +
+
+  # Faceting and coordinates
+  facet_wrap(vars(trait_label)) +
+  xlim(0, 100) +
+  ylim(min(all_plot_data %>% filter(sensory_group == "FL") %>% select(y)), 
+       max(all_plot_data %>% filter(sensory_group == "FL") %>% select(y))) +
+
+  # Labels
+  labs(x = "Variable importance (GBM)",
+       y = expression(beta~"coefficient (BayesA)"),
+       fill = "") +
+
+  # Point labels
+  geom_text_repel(data = FL_label1,
+                  aes(x = x, y = y,
+                      label = label,
+                      color = group),
+                  hjust = -0,
+                  vjust = -0.5,
+                  size = 3,
+                  box.padding = 0.1) +
+
+  # Colours and guides
+  scale_fill_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                              "Phenylalanine-derived", "Sugars",
+                              "Acids", "Other"),
+                   values = my_colours) +
+  scale_color_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                               "Phenylalanine-derived", "Sugars",
+                               "Acids", "Other"),
+                    values = my_colours) +
+  guides(colour = "none") +
+
+  # Theme customisation
+  theme_bw() +
+  theme(
+    plot.background = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_rect(linetype = "solid", colour = "Black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = 11),
+    axis.title.x = element_text(vjust = -2),
+    axis.title.y = element_text(vjust = 2),
+    axis.text = element_text(size = 8),
+    legend.background = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 11, face = "bold"),
+    panel.spacing.y = unit(0, "cm", data = NULL),
+    legend.position = "bottom"
+  )
+```
+
+### Figure 5: Variation in papaya taste characteristics explained by targeted metabolites in 27 papaya genotypes.
+
+```{r aftertaste metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+# First filter for AT labels -------
+AT_label <- 
+  rbind(
+    all_plot_data %>% filter(sensory_group == "AT") %>% 
+      group_by(trait) %>% slice_min(y, n=4), 
+    all_plot_data %>% filter(sensory_group == "AT") %>% 
+      group_by(trait) %>% slice_max(y, n=2),
+    all_plot_data %>% filter(sensory_group == "AT") %>% 
+      group_by(trait) %>% slice_max(x, n=7)) %>% 
+  distinct()
+
+my_colours <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22")
+
+# Plot aftertaste trait variables
+ggplot(all_plot_data %>% filter(sensory_group == "AT")) +
+  aes(x = x, y = y,
+      fill = group,
+      colour = group,
+      label = label) +
+
+  # Base plot elements
+  geom_hline(yintercept = 0,
+             alpha = 0.6,
+             linetype = "dashed",
+             linewidth = 0.5) +
+  geom_point(shape = 21,
+             alpha = 0.7,
+             size = 2.5) +
+
+  # Faceting and coordinates
+  facet_wrap(vars(trait_label)) +
+  xlim(0, 100) +
+  ylim(min(all_plot_data %>% filter(sensory_group == "AT") %>% select(y)), 
+       max(all_plot_data %>% filter(sensory_group == "AT") %>% select(y))) +
+
+  # Labels
+  labs(x = "Variable importance (GBM)",
+       y = expression(beta~"coefficient (BayesA)"),
+       fill = "") +
+
+  # Point labels
+  geom_text_repel(data = AT_label,
+                  aes(x = x, y = y,
+                      label = label,
+                      color = group),
+                  hjust = 0,
+                  vjust = 0,
+                  size = 3,
+                  box.padding = 0.15) +
+
+  # Colours and guides
+  scale_fill_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                              "Phenylalanine-derived", "Sugars",
+                              "Acids", "Other"),
+                   values = my_colours) +
+  scale_color_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                               "Phenylalanine-derived", "Sugars",
+                               "Acids", "Other"),
+                    values = my_colours) +
+  guides(colour = "none") +
+
+  # Theme customisation
+  theme_bw() +
+  theme(
+    plot.background = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_rect(linetype = "solid", colour = "Black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = 11),
+    axis.title.x = element_text(vjust = -2),
+    axis.title.y = element_text(vjust = 2),
+    axis.text = element_text(size = 8),
+    legend.background = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 11, face = "bold"),
+    panel.spacing.y = unit(0, "cm", data = NULL),
+    legend.position = "bottom"
+  )
+```
+
+### Figure 6: Variation in papaya aftertaste characteristics explained by targeted metabolites in 27 papaya genotypes.
+
+```{r texture metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+#First filter for TX labels -------
+  TX_label <- 
+  rbind(
+    all_plot_data %>% filter(sensory_group == "TX") %>%
+      group_by(trait) %>% slice_min(y, n=2), 
+    all_plot_data %>% filter(sensory_group == "TX") %>% 
+      group_by(trait) %>% slice_max(y, n=2),
+    all_plot_data %>% filter(sensory_group == "TX") %>% 
+      group_by(trait) %>% slice_max(x, n=2)) %>% 
+  distinct()
+
+my_colours <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22")
+
+# Plot TEXTURE trait variables
+ggplot(all_plot_data %>% filter(sensory_group == "TX")) +
+  aes(x = x, y = y,
+      fill = group,
+      colour = group,
+      label = label) +
+
+  # Base plot elements
+  geom_hline(yintercept = 0,
+             alpha = 0.6,
+             linetype = "dashed",
+             linewidth = 0.5) +
+  geom_point(shape = 21,
+             alpha = 0.7,
+             size = 2.5) +
+
+  # Faceting and coordinates
+  facet_wrap(vars(trait_label)) +
+  xlim(0, 100) +
+  ylim(min(all_plot_data %>% filter(sensory_group == "TX") %>% select(y)), 
+       max(all_plot_data %>% filter(sensory_group == "TX") %>% select(y))) +
+  
+  # Labels
+  labs(x = "Variable importance (GBM)",
+       y = expression(beta~"coefficient (BayesA)"),
+       fill = "") +
+
+  # Point labels
+  geom_text_repel(data = TX_label,
+                  aes(x = x, y = y,
+                      label = label,
+                      color = group),
+                  hjust = 0,
+                  vjust = 0,
+                  size = 3,
+                  box.padding = 0.15) +
+
+  # Colours and guides
+  scale_fill_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                              "Phenylalanine-derived", "Sugars",
+                              "Acids", "Other"),
+                   values = my_colours) +
+  scale_color_manual(breaks = c("Carotenoid/Terpenes", "Lipid-derived",
+                               "Phenylalanine-derived", "Sugars",
+                               "Acids", "Other"),
+                    values = my_colours) +
+  guides(colour = "none") +
+
+  # Theme customisation
+  theme_bw() +
+  theme(
+    plot.background = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_rect(linetype = "solid", colour = "Black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = 11),
+    axis.title.x = element_text(vjust = -2),
+    axis.title.y = element_text(vjust = 2),
+    axis.text = element_text(size = 8),
+    legend.background = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 11, face = "bold"),
+    panel.spacing.y = unit(0, "cm", data = NULL),
+    legend.position = "bottom"
+  )
+```
+
+### Figure 7: Variation in papaya texture characteristics explained by targeted metabolites in 27 papaya genotypes.
+
+## Modelling consumer liking
+
+Trends within the individual consumer liking scores for each genotype were identified using the affinity propagation clustering algorithm (Frey and Dueck (2007)). The grouping of individual consumers into three distinct clusters reveals the interaction between their regular papaya consumption habit and how they scored each genotype during tasting. Moreover, there are indications that multiple genotypes maybe be accepted into the Australian market by different clusters of consumers. \### Cluster analysis
+
+```{r Consumer cluster analysis, results = FALSE, cache=TRUE, fig.height=7, fig.width=10, fig.dpi=600}
+consumer_data <- read_xlsx("data/consumer_data.xlsx")
+
+z <- consumer_data %>% 
+  select(participant,liking,var) %>%
+  pivot_wider(names_from = var, 
+              values_from = liking)
+
+# to plot the eps values
+set.seed(11)
+a = apcluster(negDistMat(r=2), x=z, q=0)
+
+# cluster exemplars
+clusters_eg <- a@exemplars %>% unname()
+knitr::kable(consumer_data[clusters_eg,],
+      col.names = c("Participant", "Genotype", "Flesh Colour","Liking Score","Like Comment","Dislike Comment","Gender","Age","Consumption Habit"),
+      caption = "Cluster exemplars generated using apcluster")
+
+# consumer clusters
+c1 <- a@clusters[[1]]%>% unname()
+c2 <- a@clusters[[2]]%>% unname()
+c3 <- a@clusters[[3]]%>% unname()
+
+consumer_clusters <- z %>% mutate(Cluster = c(1:125))
+consumer_clusters$Cluster <- as.character(car::recode(consumer_clusters$Cluster,"c1='1';c2='2';c3='3'"))
+
+# attach cluster membership to consumer data
+cluster_data <- 
+  left_join(consumer_clusters, 
+            consumer_data %>% select(participant,Gender,age,habit) %>% distinct()) %>% 
+  relocate(Cluster:habit, .before = RB1) %>% 
+  select(-participant)
+
+# Summarise cluster demographic data using fisher test and kruskal
+cluster_membership <- cluster_data %>% select(1:4)
+
+tab1 <- CreateTableOne(vars = c("Gender", "age", "habit"),
+                       strata = "Cluster",
+                       data = cluster_membership,
+                       factorVars = c("Gender", "habit"))
+
+# very convoluted way to make it look good in html
+tab_df <- 
+  as.data.frame(print(tab1)) %>%
+  rownames_to_column(var = "Consumer Cluster")
+
+# Create flextable
+ft <- flextable(tab_df) %>%
+  theme_vanilla() %>%
+  autofit()
+
+# summarise cluster liking for each genotype
+
+cluster_summary <- consumer_clusters %>% select(-participant) %>%
+  pivot_longer(RB1:`Moonlight 1`,names_to = "var",values_to = "liking")
+
+# ANOVA and Post-hoc 
+cluster_aov <- aov(liking ~ var * Cluster, data = cluster_summary)
+cluster_ph <- SNK.test(cluster_aov, c("var","Cluster"))
+
+# Extract data for plotting
+aov_plot <- 
+  left_join(cluster_ph$groups %>% rownames_to_column(var="var"),
+            cluster_ph$means %>% rownames_to_column(var="var")) %>% 
+  separate(var,
+           into = c("var", "cluster"),
+           sep = ":")
+ 
+# second y-axis values
+lam_breaks <- c(0, 13, 23, 33, 45, 50, 55, 67, 77, 87, 100)
+lam_labels <- c('Greatest imaginable dislike',
+                'Dislike extremely',
+                'Dislike very much',
+                'Dislike moderately',
+                'Dislike slightly',
+                'Neither like nor dislike',
+                'Like slightly',
+                'Like moderately',
+                'Like very much',
+                'like extremely',
+                'Greatest imaginable like')
+ggplot(aov_plot) +
+aes(x = reorder(var,-liking), 
+    y = liking, 
+    group = interaction(var, cluster), 
+    color = cluster, fill = cluster) + 
+  # Add boxplot-style elements
+  geom_boxplot(
+    aes(ymin = Min,
+        lower = Q25,
+        middle = Q50,
+        upper = Q75,
+        ymax = Max),
+    stat = "identity",
+    alpha = 0.3,  
+    width = 0.9,
+    position = position_dodge(0.9)) +
+  # Add post-hoc letters
+  geom_text(aes(label = groups, y = Q50 + 2),
+            position = position_dodge(0.9),
+            size = 2.5) +
+  # Customize colors
+scale_color_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
+                   name = 'Consumer\nCluster') +
+scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
+                   name = 'Consumer\nCluster',
+                  labels= parse(text = c(
+                    "1~(italic(n)==61)",
+                    "2~(italic(n)==24)",
+                    "3~(italic(n)==40)"))) +
+  # remove letter in legend
+  guides(color = "none") +
+  # Customize theme
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(fill = NA, color = 'black'),
+        legend.position = 'bottom', 
+        legend.box = "horizontal",   
+        legend.direction = "horizontal",  
+        legend.margin = margin(t = 0, b = 10),  
+        legend.title = element_text(size = 10),  
+        legend.text = element_text(size = 9)) +
+  # Add labels
+  labs(x = 'Papaya Genotype',
+       y = 'Consumer Liking Score (0-100)') +
+  # Add secondary y-axis for LAM scale with no expansion
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = c(0, 0), 
+    sec.axis = sec_axis(
+      ~.,
+      breaks = lam_breaks,
+      labels = lam_labels,
+      name = 'Labeled Affective Magnitude (LAM) Scale'))
+```
+
+### Figure 8: Consumer liking score for nine papaya genotypes recorded by 125 untrained panelists. Each panelist was grouped into a cluster based on the affinity propagation clustering algorithm. There is an interaction between geotype liking scores and cluster membership (ANOVA; p = \<0.001). The differences between genotype liking scores among all clusters are indicated by different letters (SNK: p = \<0.05).
+
+### Table 2: Breakdown of demographic data and papaya consumption habits within each consumer cluster. Kruskal wallis was applied to age and fishers test was applied to gender and papaya consumption habit.
+
+```{r cluster summary, fig.height=8, fig.width=6}
+# Display the table
+ft
+```
+
+```{r Consumer cluster PCA, cache=TRUE, fig.height=6, fig.width=8, fig.dpi=600}
+  # PCA clusters as variables -----
+pca_data <- cluster_data %>%
+  pivot_longer(RB1:`Moonlight 1`,names_to = "var",values_to = "liking") %>%
+  group_by(Cluster,var) %>%
+  summarise(mean_liking = mean(liking)) %>%  
+  pivot_wider(names_from = "Cluster",values_from = "mean_liking") %>% 
+  column_to_rownames(var = "var")
+
+plot_data <- PCA(pca_data, graph = F)
+# make a dataframe with variable coordinates for arrows
+PCAvar_coords <- plot_data$var$coord %>% 
+  as.data.frame() %>% 
+  select(1:2) %>% 
+  rownames_to_column(var = "var") %>% mutate(var=paste("Cluster",var))
+
+# create a scale value to the size of the scatter plot to adjust variable coordinates
+var <- facto_summarize(plot_data, element = "var", 
+                       result = c("coord", "contrib", "cos2"))
+colnames(var)[2:3] <- c("x", "y")
+
+ind <- data.frame(plot_data$ind$coord[, drop = FALSE], stringsAsFactors = TRUE)
+colnames(ind) <- c("x", "y")
+
+r <- min((max(ind[, "x"]) - min(ind[, "x"])/(max(var[, "x"]) - min(var[, "x"]))), 
+         (max(ind[, "y"]) - min(ind[, "y"])/(max(var[,"y"]) - min(var[, "y"]))))
+# update the variable coordinates
+PCAvar_plot_data <- PCAvar_coords %>% as_tibble() %>% 
+  mutate(across(starts_with("Dim"), ~r*0.8*.x))
+
+# get coordinates for individuals to map group means with meta data for aesthetics
+PCAvoctable <- plot_data$ind$coord %>% 
+  as.data.frame() %>% 
+  rownames_to_column("Genotype2") %>% 
+  left_join(genotype_table %>% select(Genotype2,Flesh) %>% distinct())
+
+# choose colours
+my_colours <- c("#E69F00", "#56B4E9", "#009E73")
+
+# Get component variance information for axis labels
+percentVar <- plot_data$eig[1:2,2]
+
+#plot PCA coords using ggplot
+
+ggplot(PCAvoctable) + 
+  aes(x = Dim.1, y = Dim.2, fill=Flesh) + 
+  geom_hline(yintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_vline(xintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_segment(mapping = aes(xend=Dim.1, yend=Dim.2, colour = var), 
+               data = PCAvar_plot_data,
+               inherit.aes = F,
+               x=0, y=0, linewidth=0.5,
+               arrow = arrow(angle = 30, length = unit(0.2, "cm")),
+               lineend = "round",linejoin = "mitre") +
+  geom_text_repel(mapping = aes(x=Dim.1, y=Dim.2, label=var),
+                  data = PCAvar_plot_data,
+                  inherit.aes = F,
+                  hjust=-0.15, vjust=-0.5, size=3.2, colour= my_colours) + 
+  scale_fill_manual(values = c("#E31A1C","gold2")) +
+  scale_color_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
+                   name = 'Consumer\nCluster',
+                  labels= parse(text = c(
+                    "1~(italic(n)==61)",
+                    "2~(italic(n)==24)",
+                    "3~(italic(n)==40)"))) +
+  geom_point(shape = 21,alpha = 0.9, size=2.5) +
+  theme_bw() + theme(plot.background = element_blank(), 
+                     panel.grid.major = element_blank(), 
+                     panel.grid.minor = element_blank(),
+                     axis.title = element_text(size=12),
+                     plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(label = PCAvoctable$Genotype2,
+                  size=3, hjust=-0.15, vjust=-0.3,
+                  colour = "black", fontface = "italic") +
+  labs( x=glue::glue("C1: {round(percentVar[1],2)}% variance"),
+        y=glue::glue("C2: {round(percentVar[2],2)}% variance"), 
+        fill="Flesh Colour", 
+        colour="Consumer Cluster") 
+```
+
+### Figure 9: Principal component analysis of the liking scores for nine papaya genotypes reported by three distinct consumer clusters (consumer clusters were generated using agglomerative clustering algorithm): Cluster 1, n = 61; Cluster 2, n = 21; Cluster 3, n = 40.
+
+There is an inherent limitation in the dataset whereby fruit included in the consumer study was not able to be used for chemical analysis. This is due to the logistical issues regarding adequate fruit collection and processing: the fruit that was collected was completely consumed by the panelists. To deal with this limitation best linear unbiased estimates were combined with previously collected sensory and metabolite data to represent the broad differences between genotype liking scores. This caveat likely leads to the underestimation of complex nuances between variables that influence papaya fruit liking. Therefore, the model generated from this data highlights larger variable variation between genotypes.
+
+### Table 3: Estimated marginal means from the mixed effects model including genotype as a fixed effect and participant as a random effect
+
+```{r Consumer mixed model, cache=TRUE}
+liking_fit <- lmer(liking ~ var +
+                     (1|participant),
+                   data = consumer_data)
+
+blue_df <- 
+  as.data.frame(
+    emmeans(liking_fit, 
+            specs = "var")) %>% 
+  rename("Genotype2" = "var") 
+
+kable(blue_df,
+      col.names = c("Genotype","Least-squares mean",
+                    colnames(blue_df)[3:6]),
+      align = c("l",rep("c",5))) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(0, bold = TRUE)
+
+model_data <- 
+  left_join(PCA_data %>% rownames_to_column(var = "ID"), genotype_table) %>% 
+  left_join(blue_df) %>%
+  filter(!is.na(emmean)) %>% 
+  column_to_rownames(var = "ID") %>% 
+  select(-c(assay:Genotype,SE:upper.CL,label:Genotype2)) %>% 
+  relocate(Flesh, .after = "emmean") %>% 
+  select(-c(Decanal,Methyl_hexanoate,Octanal,E_2_nonal, Nonanal)) 
+  
+```
+
+Models indicating variable influence on fruit liking can be produced from red-fleshed and yellow-fleshed data separately; however, with limited power due to sample size. Moreover, the liking scores are more accurately compared as a whole because the consumer participants tasted all samples in one sitting, as opposed to only red-fleshed and then only yellow-fleshed samples.
+
+Interestingly, it became clear in consumer tasting that RS5 (T2-6-5.27.12) wasn't an inherently bitter genotype; although it was thought to be from earlier sensory panels. Due to the constants of genotype liking, any samples displaying uncharacteristic flavour (likely due to poor fruit maturation) cause significant inaccuracies in modelling efforts. These samples were detected by comparing genotypes with equivalent liking scores. Therefore, samples were removed for further modelling: 03-302 and 03-669.
+
+```{r RS5 comparison, cache=TRUE, fig.height=6, fig.width=8, dpi=600}
+# find the source of confusion in cosumer liking modelling - filter for RS5/T2-6-5.27.12 and equivalently liked genotypes
+sample_review <- full_data_matrix %>% 
+  select(-(5:40)) %>% 
+  filter(Genotype %in% c("T2-6-5.27.12","RB1","Hybrid_6")) %>% 
+  column_to_rownames(var = "ID")
+
+# PCA
+pca_data <- PCA(sample_review, quali.sup = 1:4, graph = F)
+
+# make a dataframe with variable coordinates for arrows
+PCAvar_coords <- pca_data$var$coord %>% 
+  as.data.frame() %>% 
+  select(1:2) %>% 
+  rownames_to_column(var = "var") %>% 
+  slice_max(abs(Dim.1)+abs(Dim.2), n = 10) %>% 
+  left_join(sensory_meta) %>% 
+  mutate(Category = snakecase::to_title_case(group),
+         sensory_label = snakecase::to_sentence_case(sub("_[A-Z]+$", "", var)))
+
+# create a scale value to the size of the scatter plot to adjust variable coordinates
+var <- facto_summarize(pca_data, 
+                       element = "var", 
+                       result = c("coord", "contrib", "cos2"))
+
+colnames(var)[2:3] <- c("x", "y")
+
+ind <- data.frame(pca_data$ind$coord[, drop = FALSE], 
+                  stringsAsFactors = TRUE)
+
+colnames(ind) <- c("x", "y")
+
+r <- min((max(ind[, "x"]) - min(ind[, "x"])/(max(var[, "x"]) - min(var[, "x"]))), 
+         (max(ind[, "y"]) - min(ind[, "y"])/(max(var[,"y"]) - min(var[, "y"]))))
+
+# update the variable coordinates
+
+PCAvar_plot_data <- PCAvar_coords %>% 
+                    as_tibble() %>% 
+                    mutate(across(starts_with("Dim"), ~r*0.7*.x)) # this number scales arrow length
+
+# get coordinates for individuals to map group means with meta data for aesthetics
+PCAvoctable <- pca_data$ind$coord %>% 
+               as.data.frame() %>% 
+               rownames_to_column("ID") %>% 
+               left_join(genotype_table)
+
+# choose colours
+my_colours <- c("Aug22" = "#E69F00", "Feb23" = "#56B4E9", "Feb24" = "#009E73")
+
+
+# Get component variance information for axis labels
+percentVar <- pca_data$eig[1:2,2]
+
+#plot PCA coords using ggplot
+
+ggplot(PCAvoctable) + 
+  aes(x = Dim.1, y = Dim.2, fill = assay, shape = Genotype2) + 
+  geom_hline(yintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_vline(xintercept = 0, alpha = 0.6, 
+             linetype="dashed", linewidth=0.5) +
+  geom_segment(mapping = aes(colour=group, xend=Dim.1, yend=Dim.2), 
+               data = PCAvar_plot_data,
+               inherit.aes = F,
+               x=0, y=0, linewidth=0.3,
+               arrow = arrow(angle = 30, length = unit(0.2, "cm"))) +
+  geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
+                  data = PCAvar_plot_data,
+                  inherit.aes = F,
+                  hjust=-0.15, vjust=0.20, size=3.2, box.padding = 0.1) + 
+  scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090")) +
+  geom_point(alpha = 1, size=2.5,color = "black") +
+  xlim(min(PCAvar_plot_data$Dim.1-2.9), max(PCAvar_plot_data$Dim.1)) + 
+  ylim(min(PCAvar_plot_data$Dim.2-0.3), max(PCAvar_plot_data$Dim.2)+0.9) +
+  theme_bw() + theme(plot.background = element_blank(), 
+                     panel.grid.major = element_blank(), 
+                     panel.grid.minor = element_blank(),
+                     axis.title = element_text(size=12)) +
+  geom_text_repel(label = PCAvoctable$ID, 
+                  size=3, hjust=-0.2, vjust=0.5, box.padding = 0.2,
+                  colour = "black", fontface = "italic") +
+   scale_shape_manual(values = c(21,22,24)) + scale_fill_manual(values = my_colours,
+                                                                guide = guide_legend(override.aes = list(shape = 22, size = 6))) +
+   guides(colour=guide_legend(override.aes = list(label="")))+
+  labs( x=glue::glue("C1: {round(percentVar[1],2)}% variance"),
+        y=glue::glue("C2: {round(percentVar[2],2)}% variance"), fill="Harvest Month", 
+        colour="Attribute", shape = "Genotype") 
+# issue with 2 samples during sensory: overly bitter and less sweet than expected
+bitter_samples <- c("03-302","03-669")
+
+# update model data
+model_data <- model_data[!rownames(model_data) %in% bitter_samples,]
+```
+
+### Figure 10: PCA Bi-plot comparing red-fleshed papaya genotypes RB1, Hybrid 6 and RS5. All three genotypes received similar liking scores from 125 untrained panelists.
+
+After these two samples were removed from the dataset, modelling the effect of sensory traits and metabolite traits on papaya liking scores better reflects what was observed. Similar to before gbm and bayesA were implemented to determine how the different variable groups influence papaya liking.
+
+```{r liking variable influence, cache=TRUE, results='hide', warning=FALSE}
+# Function to run models for a specific flesh type
+run_models <- function(data, flesh_type, met_cols, sens_cols, y_col = 41) {
+  # 
+  # Filter and prepare data
+  pap <- data %>%
+    filter(grepl(flesh_type, Flesh, perl = TRUE)) %>%
+    select(-Flesh) %>% 
+    scale()
+
+  # Define model parameters based on flesh type
+  model_params <- if(flesh_type == "Yellow") {
+    list(
+      n_trees = c(500),
+      int_depth = c(5),
+      shrinkage = c(0.01),
+      min_obs = c(1),
+      cv_folds = 5,
+      bglr_iter = 30000,
+      bglr_burnin = 10000
+    )
+  } else {
+    list(
+      n_trees = c(500, 750, 1000),
+      int_depth = c(5, 7, 10),
+      shrinkage = c(0.01, 0.02, 0.05),
+      min_obs = c(3, 5),
+      cv_folds = 10,
+      bglr_iter = 30000,
+      bglr_burnin = 10000
+    )
+  }
+
+  # Function to run a single model set (metabolites or sensory)
+  run_model_set <- function(cols, type) {
+    # Prepare data
+    carX <- as.matrix(cbind(Y = pap[,y_col], pap[,cols]))
+
+    # GBM
+    grid <- expand.grid(
+      .n.trees = model_params$n_trees,
+      .interaction.depth = model_params$int_depth,
+      .shrinkage = model_params$shrinkage,
+      .n.minobsinnode = model_params$min_obs
+    )
+
+    gbm_model <- train(
+      Y ~ .,
+      data = carX,
+      method = "gbm",
+      trControl = trainControl(method = "cv", number = model_params$cv_folds),
+      tuneGrid = grid
+    )
+
+    # BGLR
+    bglr_model <- BGLR(
+      y = pap[,y_col],
+      ETA = list(list(X = pap[,cols], model = 'BayesA')),
+      nIter = model_params$bglr_iter,
+      burnIn = model_params$bglr_burnin,
+      thin = 100,
+      saveAt = '',
+      df0 = 5,
+      R2 = 0.5
+    )
+
+    # Combine results
+    bind_rows(
+      varImp(gbm_model)$importance %>%
+        rownames_to_column("var") %>%
+        mutate(model = paste0(flesh_type, "_", type, "_gbm")),
+      tibble(
+        var = colnames(pap[,cols]),
+        Overall = bglr_model$ETA[[1]]$b,
+        model = paste0(flesh_type, "_", type, "_beta")
+      )
+    ) %>%
+      rename(coord = Overall)
+  }
+
+  # Run both model sets and combine results
+  bind_rows(
+    run_model_set(met_cols, "mets"),
+    run_model_set(sens_cols, "sens")
+  )
+}
+
+# run functions
+set.seed(11)
+# flesh_types <- c("Red", "Yellow", "Red_Yellow")
+flesh_types <- c("Red", "Yellow", "Red|Yellow")
+met_cols <- 1:22
+sens_cols <- 23:40
+
+results <- flesh_types %>%
+  map(~run_models(model_data, ., met_cols, sens_cols)) %>%
+  list_rbind() %>% 
+  select(var, model, coord) %>% 
+  mutate(model = sub("|", "_", model, fixed = TRUE))
+
+```
+
+```{r plot liking variables, cache=TRUE}
+# liking variable plots
+create_importance_plot <- function(data,
+                                 data_type = c("mets", "sens"),
+                                 variety = "Red & Yellow",
+                                 label_data,
+                                 color_palette,
+                                 group_breaks,
+                                 facet_by_variety = FALSE,
+                                 facet_scales = "free_y",
+                                 facet_ncol = NULL,
+                                 facet_theme = NULL) {
+  # Input validation
+  data_type <- match.arg(data_type)
+
+  # Common theme settings
+  plot_theme <- theme_bw() +
+    theme(
+      plot.background = element_blank(),
+      panel.background = element_blank(),
+      panel.border = element_rect(linetype = "solid", colour = "Black"),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = 11),
+      axis.title.x = element_text(vjust = -2),
+      axis.title.y = element_text(vjust = 2),
+      axis.text = element_text(size = 8),
+      legend.background = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(size = 11, face = "bold"),
+      panel.spacing.y = unit(0, "cm", data = NULL),
+      legend.position = "bottom"
+    )
+
+  # Filter data based on type and variety
+  wts_filtered <- data %>%
+    filter(data_type == !!data_type) %>%
+    {if(!facet_by_variety) filter(., variety == !!variety) else .}
+
+  # Filter labels
+  labels_filtered <- label_data %>%
+    filter(data_type == !!data_type) %>%
+    {if(!facet_by_variety) filter(., variety == !!variety) else .}
+
+  # Create base plot
+  p <- ggplot(wts_filtered) +
+    aes(x = x, y = y, fill = group, colour = group, label = label) +
+    geom_hline(
+      yintercept = 0,
+      alpha = 0.6,
+      linetype = "dashed",
+      linewidth = 0.5
+    ) +
+    plot_theme +
+    xlim(0, 100) +
+    {if(!facet_by_variety) ylim(min(wts_filtered$y), max(wts_filtered$y))} +
+    geom_point(shape = 21, alpha = 0.7, size = 2.5) +
+    geom_text_repel(
+      data = labels_filtered,
+      aes(x = x, y = y, label = label, color = group),
+      hjust = -0.1, vjust = 0, size = 3, box.padding = 0.10
+    ) +
+    scale_fill_manual(breaks = group_breaks, values = color_palette) +
+    scale_color_manual(breaks = group_breaks, values = color_palette) +
+    guides(colour = "none") +
+    labs(
+      x = "Variable importance (GBM)",
+      y = "β coefficient (BayesA)",
+      fill = ""
+    )
+
+  # Add faceting if requested
+  if(facet_by_variety) {
+    p <- p +
+      facet_wrap(~variety,
+                 scales = facet_scales,
+                 ncol = facet_ncol) +
+      {if(!is.null(facet_theme)) facet_theme else
+        theme(
+          strip.background = element_rect(fill = "white"),
+          strip.text = element_text(size = 11, face = "bold")
+        )
+      }
+  }
+
+  return(p)
+}
+
+# Prepare the data
+wts <- results %>%
+  left_join(rbind(class_key, sensory_meta), by = "var") %>%
+  mutate(
+    variety = case_when(
+      str_detect(model, "Red_Yellow") ~ "Red & Yellow",
+      str_detect(model, "Red") ~ "Red",
+      str_detect(model, "Yellow") ~ "Yellow"
+    ),
+    data_type = str_extract(model, "mets|sens"),
+    model = str_extract(model, "gbm|beta"),
+    label = str_replace_all(label,"total sugar","Total sugar")
+  ) %>%
+  pivot_wider(names_from = model, values_from = coord) %>%
+  rename(x = gbm, y = beta)
+
+# Define colors
+my_colours <- c(
+  "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+  "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22"
+)
+
+# Prepare labels
+mets_labels <- rbind(
+  wts %>% group_by(variety, data_type) %>% slice_min(y, n = 5),
+  wts %>% group_by(variety, data_type) %>% slice_max(y, n = 7),
+  wts %>% group_by(variety, data_type) %>% slice_max(x, n = 6)
+) %>% distinct()
+
+sens_labels <- rbind(
+  wts %>% group_by(variety, data_type) %>% slice_min(y, n = 5),
+  wts %>% group_by(variety, data_type) %>% slice_max(y, n = 7),
+  wts %>% group_by(variety, data_type) %>% slice_max(x, n = 6)
+) %>% distinct()
+
+# Define group breaks
+mets_breaks <- c("Carotenoid/Terpenes", "Lipid-derived", "Phenylalanine-derived",
+                 "Sugars", "Acids", "Other")
+sens_breaks <- c("Flavour", "Aftertaste", "Aroma", "Texture")
+
+# metabolite variable plot
+metabolites_plot<- create_importance_plot(
+  data = wts,
+  data_type = "mets",
+  variety = "Red & Yellow",
+  label_data = mets_labels,
+    color_palette = my_colours,
+  group_breaks = mets_breaks,
+  facet_by_variety = FALSE
+)
+# sensory variable plot
+Sensory_plot <- create_importance_plot(
+  data = wts,
+  data_type = "sens",
+  variety = "Red & Yellow",
+  label_data = sens_labels,
+  color_palette = my_colours,
+  group_breaks = sens_breaks,
+  facet_by_variety = FALSE
+)
+```
+
+```{r metabolite liking plot, cache=TRUE, fig.height=6, fig.width=5, dpi=600}
+metabolites_plot
+```
+
+### Figure 11: Metabolite characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores.
+
+```{r sensory liking plot, cache=TRUE, fig.height=6, fig.width=5, dpi=600}
+Sensory_plot
+```
+
+### Figure 12: Sensory characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores.
+
+Variance decomposition analysis is implemented to understand the variation in liking scores between the genotypes based on class groupings for sensory and metabolite variables. Such as taste or aroma for sensory characteristics and terpenes (volatile organic compound) or sugars (non-volatile organic compound) for metabolite variables. This provides a broader sense of the variables influencing fruit liking scores.
+
+```{r variance decomposition, cache=TRUE}
+# update model data
+model_data <- model_data %>% select(-Flesh)
+
+# Function to create Gaussian kernel matrix------------
+create_kernel_matrix <- function(data, vars) {
+    W <- data %>%
+        select(all_of(vars)) %>%
+        as.matrix()
+
+    G <- as.matrix(dist(W, method="euclidean", diag=TRUE, upper=TRUE))
+    K <- 1 - G/max(G, na.rm=TRUE)
+    return(K)
+}
+
+# Main variance decomposition function
+variance_decomp <- function(data, var_groups, response = "emmean") {
+    # Create list to store kernel matrices
+    kernel_matrices <- list()
+
+    # Generate kernel matrix for each group
+    for(group_name in names(var_groups)) {
+        kernel_matrices[[group_name]] <- create_kernel_matrix(
+            data,
+            var_groups[[group_name]]
+        )
+    }
+
+    # Create ETA list for BGLR
+    ETA <- lapply(kernel_matrices, function(K) {
+        list(K = K, model = 'RKHS')
+    })
+
+    # Extract response variable
+    
+    y <- scale(data)[,response]
+
+    # Fit BGLR model
+    fm <- BGLR::BGLR(
+        y = y,
+        ETA = ETA,
+        nIter = 30000,
+        burnIn = 10000,
+        thin = 100,
+        R2 = 0.5,
+        saveAt = ""
+    )
+
+    # Calculate variance components and proportions
+    varE <- fm$varE  # Residual variance
+    var_components <- sapply(fm$ETA, function(x) x$varU)
+    total_var <- sum(var_components) + varE
+
+    # Calculate proportions for each group
+    var_proportions <- c(var_components, 
+                         residual = varE) / total_var
+
+    # Create results list
+    results <- list(
+        model = fm,
+        variance_components = var_components,
+        residual_variance = varE,
+        variance_proportions = var_proportions,
+        total_variance = total_var
+    )
+
+    return(results)
+}
+
+# Create list of metabolite variables----------
+included_vars <- class_key %>% 
+  filter(var %in% colnames(model_data))
+
+phe <- included_vars %>%
+    filter(group == "Phenylalanine-derived" & !var == "GTR_conc") %>%
+     select(var) %>% pull()
+lip <- included_vars %>%
+    filter(group == "Lipid-derived") %>%
+    select(var) %>% pull()
+car <- included_vars %>%
+    filter(group == "Carotenoid/Terpenes") %>%
+    select(var) %>% pull()
+sugar <- included_vars %>%
+    filter(group == "Sugars",
+           !str_detect(var,"_prop")) %>%
+    select(var) %>% pull()
+acid <- c("TA")
+GTR <- c("GTR_conc")
+
+# Create groups list
+mets_groups <- list(
+    phe = phe,
+    lip = lip,
+    car = car,
+    sugar = sugar,
+    acid = acid,
+    GTR = GTR
+)
+
+# Metabolites analysis
+mets_results <- variance_decomp(model_data, mets_groups, response = "emmean")
+
+# Organize data with row groups
+mets_table_data <- 
+  data.frame(category = names(mets_results$variance_proportions),
+             proportion = mets_results$variance_proportions) %>%
+  mutate(proportion = round(proportion * 100, 1),
+         group_type = case_when(
+           category %in% c("phe", "lip", "car") ~ "Volatiles",
+           category %in% c("sugar", "acid", "GTR") ~ "Non-volatiles",
+           TRUE ~ "Residual"),
+         category = 
+           str_replace_all(category,
+                           c("phe" = "Phenylalanine-derived",
+                             "lip" = "Lipid-derived",
+                             "car" = "Carotenoid/Terpenes",
+                             "sugar" = "Sugars",
+                             "acid" = "Acids",
+                             "GTR" = "GTR")))
+# write table
+mets_table <- mets_table_data %>%
+    select(group_type, category, proportion) %>%
+    gt(
+        groupname_col = "group_type"
+    ) %>%
+    tab_header(
+        title = "Variance Components Analysis",
+        subtitle = "Proportion of Variance in Liking Scores Explained by Metabolite Groups"
+    ) %>%
+    fmt_percent(
+        columns = proportion,
+        decimals = 1,
+        scale_values = FALSE
+    ) %>%
+    cols_label(
+        category = "Metabolite Group",
+        proportion = "Variance Explained (%)"
+    ) %>%
+    summary_rows(
+        groups = c("Non-volatiles", "Residual", "Volatiles"),
+        columns = proportion,
+        fns = list("Group Total" = ~sum(.)),
+        fmt = ~ fmt_percent(., decimals = 1, scale_values = FALSE)
+    ) %>%
+    grand_summary_rows(
+        columns = proportion,
+        fns = list("Total" = ~sum(.)),
+        fmt = ~ fmt_percent(., decimals = 1, scale_values = FALSE)
+    ) %>%
+    tab_style(
+        style = cell_borders(
+            sides = "bottom",
+            weight = px(2)
+        ),
+        locations = cells_row_groups()
+    ) %>%
+    opt_row_striping() %>%
+    tab_options(
+        row_group.background.color = "gray90",
+        table.border.top.width = px(3),
+        table.border.bottom.width = px(3)
+    )
+
+# Create list of Sensory variables -------
+include_vars <- sensory_meta %>% 
+  filter(var %in% colnames(model_data))
+AR <- include_vars %>%
+    filter(group == "Aroma") %>%
+    select(var) %>% pull()
+TX <- include_vars %>%
+    filter(group == "Texture") %>%
+    select(var) %>% pull()
+FL <- include_vars %>%
+    filter(group == "Flavour") %>%
+    select(var) %>% pull()
+AT <- include_vars %>%
+    filter(group == "Aftertaste",
+           !str_detect(var,"_prop")) %>%
+    select(var) %>% pull()
+
+# Create groups list
+sens_groups <- list(
+    Aroma = AR,
+    Texture = TX,
+    Flavour = FL,
+    Aftertaste = AT)
+
+# Sensory analysis
+sens_results <- variance_decomp(model_data, sens_groups, response = "emmean")
+
+# Organize data with row groups
+sens_table_data <- 
+  data.frame(category = names(sens_results$variance_proportions),
+             proportion = sens_results$variance_proportions) %>%
+  mutate(proportion = round(proportion * 100, 1),
+         category = str_replace(category,'residual', 'Residual'))
+# write table
+sens_table <- sens_table_data %>%
+    gt() %>%
+    tab_header(
+        title = "Variance Components Analysis",
+        subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
+    ) %>%
+    fmt_percent(
+        columns = proportion,
+        decimals = 1,
+        scale_values = FALSE
+    ) %>%
+    cols_label(
+        category = "Sensory Group",
+        proportion = "Variance Explained (%)"
+    ) %>%
+    tab_style(
+        style = cell_borders(
+            sides = "bottom",
+            weight = px(2)
+        ),
+        locations = cells_row_groups()
+    ) %>%
+    opt_row_striping() %>%
+    tab_options(
+        row_group.background.color = "gray90",
+        table.border.top.width = px(3),
+        table.border.bottom.width = px(3)
+    )
+```
+
+### Table 4
+
+```{r sensory decomposition table}
+sens_table
+```
+
+### Table 5
+
+```{r metabolite decomposition table}
+mets_table
+
+```
+
+Finally a predictive model was generated to predict papaya fruit liking in future selection processes. The variables included in the model were reduced to four to prevent overfitting considering the limited sample size: sulcatone (terpene), linalool oxide (terpene), γ-Octalactone (lipid-derived) and total sugars (sucrose, glucose and fructose; sugars). This model may be implemented for selection purposes if the sampling and instrumentation protocols are repeated. New samples may be indexed within the scores of samples used to build the model. Considering the model isn't equipped for extrapolation, any values outside the ranges of what was used to build the model may distort the predicted liking score. Unscaled data was input to the model algorithm to make it more accessible for new data imput.
+
+```{r multiple model comparison, eval=FALSE}
+explantory_vars <- function(data, num_vars = 4, target_var) {
+  
+  # Validate inputs
+  if (!is.data.frame(data)) stop("data must be a data frame")
+  if (!is.numeric(num_vars) || num_vars < 1) stop("num_vars must be a positive number")
+  if (!target_var %in% colnames(data)) stop("target_var not found in data")
+  if (num_vars >= ncol(data)) stop("num_vars must be less than number of predictor variables")
+  
+  # Get variable names, excluding the target variable
+  variable_names <- colnames(data)
+  variable_names <- variable_names[variable_names != target_var]
+
+  # Generate all combinations
+  combinations <- combn(seq_along(variable_names), num_vars)
+
+  # Convert to named list of variable combinations
+  variable_combinations <- setNames(
+      lapply(1:ncol(combinations), function(i) {
+          variable_names[combinations[,i]]
+      }),
+      paste("Model", 1:ncol(combinations))
+  )
+
+  return(variable_combinations)
+}
+
+# Function to run 5-fold cross-validation using hyperparameter grid search
+run_xgb_cv <- function(params, dtrain, nrounds = 500, nfold = 5, early_stopping = 50) {
+  cv <- xgb.cv(
+    params = params,
+    data = dtrain,
+    nrounds = nrounds,
+    nfold = nfold,
+    early_stopping_rounds = early_stopping,
+    verbose = FALSE,
+    metrics = "rmse"
+  )
+  
+  return(list(
+    rmse = min(cv$evaluation_log$test_rmse_mean),
+    iteration = cv$best_iteration
+  ))
+}
+
+# Grid search function
+grid_search_xgb <- function(param_grid, dtrain) {
+  grid <- expand.grid(param_grid)
+  
+  results <- apply(grid, 1, function(params) {
+    param_list <- list(
+      objective = "reg:squarederror",
+      eta = params["eta"],
+      max_depth = params["max_depth"],
+      subsample = params["subsample"],
+      colsample_bytree = params["colsample_bytree"]
+    )
+    
+    cv_result <- run_xgb_cv(param_list, dtrain)
+    
+    return(c(
+      params,
+      best_rmse = cv_result$rmse,
+      best_iteration = cv_result$iteration
+    ))
+  })
+  
+  results_df <- as.data.frame(t(results))
+  return(results_df)
+}
+
+# Function to prepare data for a specific variable combination
+prepare_data <- function(data, vars, target_var) {
+  boost_data <- data %>%
+    select(all_of(c(target_var, vars)))
+  
+  set.seed(11)
+  train_index <- createDataPartition(boost_data[[target_var]], p = 0.8, list = FALSE)
+  train_data <- boost_data[train_index, ]
+  test_data <- boost_data[-train_index, ]
+  
+  train_predictors <- as.matrix(train_data[, vars])
+  test_predictors <- as.matrix(test_data[, vars])
+  
+  list(
+    dtrain = xgb.DMatrix(data = train_predictors, label = train_data[[target_var]]),
+    dtest = xgb.DMatrix(data = test_predictors, label = test_data[[target_var]]),
+    test_data = test_data
+  )
+}
+
+# Modified grid search function to return best parameters and performance metrics
+run_model_combination <- function(data, vars, target_var) {
+  # Prepare data
+  prepared_data <- prepare_data(data, vars, target_var)
+  
+  # Grid search parameters
+  param_grid <- list(
+    eta = c(0.01, 0.1, 0.3),
+    max_depth = c(3, 6, 9),
+    subsample = c(0.5, 1.0),
+    colsample_bytree = c(0.5, 1.0)
+  )
+  
+  # Run grid search
+  results <- grid_search_xgb(param_grid, prepared_data$dtrain)
+  best_params <- results[which.min(results$best_rmse), ]
+  
+  # Train final model with best parameters
+  set.seed(11)
+  xgb_model <- xgboost(
+    data = prepared_data$dtrain,
+    nrounds = best_params$best_iteration,
+    eta = best_params$eta,
+    max_depth = best_params$max_depth,
+    subsample = best_params$subsample,
+    colsample_bytree = best_params$colsample_bytree,
+    objective = "reg:squarederror",
+    verbose = 0  # Suppress output
+  )
+  
+  # Make predictions
+  predictions <- predict(xgb_model, newdata = prepared_data$dtest)
+  
+  # Calculate performance metrics
+  metrics <- postResample(pred = predictions, obs = prepared_data$test_data[[target_var]])
+  
+  # Add cleanup
+  rm(xgb_model, prepared_data)
+  gc()  # Force garbage collection
+  
+  # Return results
+  list(
+    variables = paste(vars, collapse = ", "),
+    RMSE = metrics["RMSE"],
+    Rsquared = metrics["Rsquared"],
+    MAE = metrics["MAE"],
+    best_params = best_params
+  )
+}
+
+# Model comparison function
+model_comparison <- function(data, variable_combinations, target_var) {
+  total_models <- length(variable_combinations)
+  pb <- txtProgressBar(min = 0, max = total_models, style = 3)
+  
+  results <- imap(variable_combinations, \(vars, name) {
+    setTxtProgressBar(pb, as.numeric(gsub("Model ", "", name)))
+    message(sprintf("Processing %s with variables: %s", name, paste(vars, collapse=", ")))
+    tryCatch({
+      result <- run_model_combination(data, vars, target_var)
+      tibble(
+        Model_ID = name,
+        Variables = result$variables,
+        RMSE = result$RMSE,
+        R_squared = result$Rsquared,
+        MAE = result$MAE,
+        Error = NA_character_
+      )
+    }, error = function(e) {
+      tibble(
+        Model_ID = name,
+        Variables = paste(vars, collapse=", "),
+        RMSE = NA_real_,
+        R_squared = NA_real_,
+        MAE = NA_real_,
+        Error = as.character(e)
+      )
+    })
+  }) 
+  close(pb)
+  return(bind_rows(results))
+}
+
+# prep data
+model_data1 <- model_data %>% select(1:22, "emmean")
+target_var <- "emmean"
+# Execute models
+variable_combinations <- explantory_vars(model_data1, num_vars = 4, target_var)
+model_results <- model_comparison(model_data1, variable_combinations, target_var)
+writexl::write_xlsx(model_results,"results/model_results.xlsx")
+
+```
+
+### Table 6: Comparison of XGBoost performance metrics using different variables associated with papaya liking 
+```{r models_table}
+# Comparison table
+read_xlsx("data/model_results.xlsx") %>%
+  slice_min(RMSE,n=200) %>% 
+  mutate(across(where(is.numeric), ~ round(.x, digits = 4))) %>%
+  datatable()
+
+
+```
+
+```{r xgboost fine-tuning, eval=FALSE}
+# Function to run 5-fold cross-validation using hyperparameter grid search
+run_xgb_cv <- function(params, dtrain, nrounds = 500, nfold = 5, early_stopping = 50) {
+  cv <- xgb.cv(
+    params = params,
+    data = dtrain,
+    nrounds = nrounds,
+    nfold = nfold,
+    early_stopping_rounds = early_stopping,
+    verbose = FALSE,
+    metrics = "rmse"
+  )
+
+  return(list(
+    rmse = min(cv$evaluation_log$test_rmse_mean),
+    iteration = cv$best_iteration
+  ))
+}
+
+grid_search_xgb <- function(param_grid, dtrain) {
+  # Create grid of all combinations
+  grid <- expand.grid(param_grid)
+
+  # Apply CV to each parameter combination
+  results <- apply(grid, 1, function(params) {
+    param_list <- list(
+      objective = "reg:squarederror",
+      eta = params["eta"],
+      max_depth = params["max_depth"],
+      subsample = params["subsample"],
+      colsample_bytree = params["colsample_bytree"]#,
+      # min_child_weight = params["min_child_weight"],
+      # gamma = params["gamma"] 
+    )
+
+    cv_result <- run_xgb_cv(param_list, dtrain)
+
+    return(c(
+      params,
+      best_rmse = cv_result$rmse,
+      best_iteration = cv_result$iteration
+    ))
+  })
+
+  # Convert results to dataframe
+  results_df <- as.data.frame(t(results))
+
+  return(results_df)
+}
+
+# Data set up
+boost_data <- model_data %>%
+    select(emmean, Sucrose, wet_fraction, Linalool_oxide, Gamma_octalactone)
+
+# Use createDataPartition instead of sample
+set.seed(11)
+train_index <- createDataPartition(boost_data$emmean, p = 0.8, list = FALSE)
+train_data <- boost_data[train_index, ]
+test_data <- boost_data[-train_index, ]
+
+# Create matrices consistently
+train_predictors <- as.matrix(train_data[, -1])
+test_predictors <- as.matrix(test_data[, -1])
+dtrain <- xgb.DMatrix(data = train_predictors, label = train_data$emmean)
+dtest <- xgb.DMatrix(data = test_predictors, label = test_data$emmean)
+
+param_grid <- list(
+    eta = c(0.01, 0.1, 0.3),
+    max_depth = c(3, 6, 9),
+    subsample = c(0.5, 1.0),
+    colsample_bytree = c(0.5, 1.0)
+  )
+# Grid search parameters
+  param_grid <- list(
+    eta = c(0.01, 0.05, 0.1),
+    max_depth = c(2, 3, 4),
+    subsample = c(0.8, 0.9, 1.0),
+    colsample_bytree = c(0.7, 0.85, 1.0)
+  )
+
+param_grid <- list(
+    eta = seq(0.06,0.15,0.01),
+    max_depth = c(3),
+    subsample = c(0.8),
+    colsample_bytree = c(0.7)#,
+    # min_child_weight = c(1, 3),
+    # gamma = c(0, 0.1) 
+)
+
+# Grid search results
+set.seed(11)
+results <- grid_search_xgb(param_grid, dtrain)
+best_params <- results[which.min(results$best_rmse),]
+
+
+
+```
+
+```{r XGBoost test model, eval=FALSE}
+# run model with best parameters.
+set.seed(11)
+xgb_model <- xgboost(data = dtrain,
+                     nrounds = best_params$best_iteration,
+                     eta = best_params$eta,
+                     max_depth = best_params$max_depth,
+                     subsample = best_params$subsample,
+                     colsample_bytree = best_params$colsample_bytree,
+                     objective = "reg:squarederror",
+                     verbose = 0)  # Suppress output
+
+# Make predictions on test set
+predictions <- predict(xgb_model, newdata = dtest)
+
+
+```
+
+### Table 7: XGBoost performance metrics
+
+```{r XGboost eval, eval=FALSE}
+# Model evaluation
+postResample(pred = predictions, obs = test_data[,"emmean"]) %>%
+  as.data.frame() %>% rownames_to_column(var="Metric") %>% gt()
+```
+
+```{r XGBoost pred vs obs, eval=FALSE, fig.height=7, fig.width=7}
+# Create a scatter plot of predicted vs actual values for test data
+ggplot(data.frame(Predicted = predictions, 
+                        Actual = test_data[,"emmean"]), 
+             aes(x = Actual, y = Predicted)) + 
+  stat_poly_line(color = "firebrick4", fill = "red3") + 
+  stat_poly_eq() + theme_tufte() + 
+  geom_point(color = "gray15", alpha = .5, shape = 20, size = 3.5) +
+  labs( x="Observed Liking", y="Predicted Liking", title = "Predicted Liking ~ Observed Liking") +
+  theme(plot.title =  element_text(hjust = 0.5), axis.title = element_text(size=14),title = element_text(size = 14))
+```
+
+### Figure 13: XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, γ-Octalactone, linalool oxide and total sugar.
+
+```{r feature importance plot, eval=FALSE}
+# Feature Importance
+importance_matrix <- xgb.importance(feature_names = colnames(train_data[,-1]),
+                                    model = xgb_model)
+xgb.plot.importance(importance_matrix,
+                    main = "Feature Importance Plot")
+```
+
+### Figure 14: XGBoost variable importance
+
+### Table 8:
+
+```{r feature importance table, eval=FALSE}
+importance_matrix %>% mutate(Feature = str_replace_all(Feature,c("_"=" ","total"="Total"))) %>% 
+    gt() %>%
+    tab_header(
+        title = "XGBoost Feature importance",
+        subtitle = "Features contributing to liking"
+    ) %>% 
+    fmt_percent(
+        columns = everything(),
+        decimals = 1, 
+        scale_values = TRUE
+    )  %>%
+    opt_row_striping() %>%
+    tab_options(
+        row_group.background.color = "gray90",
+        table.border.top.width = px(3),
+        table.border.bottom.width = px(3)
+    )
+
+```
+
+## Data Summary
+
+The summarised volatile concentrations are reported below
+
+### Table 9: Summary of VOCs across 27 papaya genotypes. Sugar values reported in g/100gFW; total soluble solids (brix) reported in °Brix; titratable acids reported in %CA; VOCs are reported in ppb; GTR reported in ppm.
+
+```{r VOC summary, echo=FALSE}
+left_join(read_xlsx("data/VOC_meta.xlsx"), VOC_summary) %>% 
+  mutate(across(where(is.numeric), ~ round(.x, digits = 2))) %>%
+  kable(
+    caption = "Summary of VOC concentrations (ppb) by chemical species",
+    col.names = c("Species", "CAS Number", "RT (min)", "RI", "Chemical Class", "n", "Mean", "SD", "SE",   
+"Median", "Min", "Max", "N detected", "% detected"),
+    align = c('l', 'l', rep('c', 12)))
+```
+
+### Table 10: Variable means for 27 papaya genotypes (standard deviation)
+
+```{r data summary by genotype, echo=FALSE}
+data_summary_genotype %>% 
+  datatable()
+```
+
+------------------------------------------------------------------------
 
 ## General information
 
 This document was last updated at `r Sys.time()` using R Markdown (built with `r R.version.string`). The source code for this website can be found on <https://github.com/JoshLomax/Papaya_sensory_metabolomics>.
 
 Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. It is especially powerful at authoring documents and reports which include code and can execute code and use the results in the output. For more details on using R Markdown see <http://rmarkdown.rstudio.com>, [R Markdown: The Definitive Guide](https://bookdown.org/yihui/rmarkdown/) and [Rmarkdown cheatsheet](https://rstudio.github.io/cheatsheets/html/rmarkdown.html).
-
-------------------------------------------------------------------------
 
 ## Bibliography

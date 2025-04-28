@@ -2,4 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+.dat
+.jpeg
+.tiff
+Papaya_sensory_metabolomics_cache/
+Papaya_sensory_metabolomics_files/
 Output/

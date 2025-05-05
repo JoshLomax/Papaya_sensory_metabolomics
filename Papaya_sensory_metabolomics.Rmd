@@ -1019,7 +1019,7 @@ my_colours <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 # Need labels to remove
 # Determined by initially plotting FL_label 
 
-FL_bitterness <- c("γ-Octalactone", "Sucrose","Hexanal","(E/Z)-Geranylacetone","β-Ionone","Glucose","Terpinolene","Water fraction","Brix")
+FL_bitterness <- c("γ-Octalactone", "Sucrose","Hexanal","Glucose","Terpinolene","Water fraction","Brix")
 FL_intensity <- c("Sulcatone", "β-Ionone","Linalool","TA","BITC")
 FL_floral <- c("Brix","Linalool oxide","(E/Z)-Geranylacetone","Terpinene")
 FL_musty <- c("Terpinene","Sulcatone")
@@ -2251,10 +2251,10 @@ run_model_combination <- function(data, vars, target_var) {
   
   # Grid search parameters
   param_grid <- list(
-    eta = c(0.01, 0.1, 0.3),
-    max_depth = c(3, 6, 9),
-    subsample = c(0.5, 1.0),
-    colsample_bytree = c(0.5, 1.0)
+    eta = c(0.01, 0.05, 0.1),
+    max_depth = c(2, 3, 4),
+    subsample = c(0.8, 0.9, 1.0),
+    colsample_bytree = c(0.7, 0.85, 1.0)
   )
   
   # Run grid search
@@ -2290,7 +2290,7 @@ run_model_combination <- function(data, vars, target_var) {
     RMSE = metrics["RMSE"],
     Rsquared = metrics["Rsquared"],
     MAE = metrics["MAE"],
-    best_params = best_params
+    best_param = best_params
   )
 }
 
@@ -2310,6 +2310,7 @@ model_comparison <- function(data, variable_combinations, target_var) {
         RMSE = result$RMSE,
         R_squared = result$Rsquared,
         MAE = result$MAE,
+        params = result$best_param,
         Error = NA_character_
       )
     }, error = function(e) {
@@ -2319,6 +2320,7 @@ model_comparison <- function(data, variable_combinations, target_var) {
         RMSE = NA_real_,
         R_squared = NA_real_,
         MAE = NA_real_,
+        params = NA_character_,
         Error = as.character(e)
       )
     })
@@ -2333,22 +2335,23 @@ target_var <- "emmean"
 # Execute models
 variable_combinations <- explantory_vars(model_data1, num_vars = 4, target_var)
 model_results <- model_comparison(model_data1, variable_combinations, target_var)
-writexl::write_xlsx(model_results,"results/model_results.xlsx")
-
+# Write results
+flattened_results <- model_results %>% unnest(params)
+writexl::write_xlsx(flattened_results,"results/model_results.xlsx")
 ```
 
 ### Table 6: Comparison of XGBoost performance metrics using different variables associated with papaya liking 
 ```{r models_table}
-# Comparison table
-read_xlsx("data/model_results.xlsx") %>%
-  slice_min(RMSE,n=200) %>% 
-  mutate(across(where(is.numeric), ~ round(.x, digits = 4))) %>%
+flattened_results <- read_xlsx("data/model_results.xlsx")
+# Filter top results by RMSE
+flattened_results %>% 
+  slice_min(RMSE,n=150) %>% 
+  mutate(across(where(is.numeric),~round(.x, digits = 2))) %>% 
   datatable()
-
 
 ```
 
-```{r xgboost fine-tuning, eval=FALSE}
+```{r xgboost fine-tuning, cache=TRUE}
 # Function to run 5-fold cross-validation using hyperparameter grid search
 run_xgb_cv <- function(params, dtrain, nrounds = 500, nfold = 5, early_stopping = 50) {
   cv <- xgb.cv(
@@ -2400,7 +2403,7 @@ grid_search_xgb <- function(param_grid, dtrain) {
 
 # Data set up
 boost_data <- model_data %>%
-    select(emmean, Sucrose, wet_fraction, Linalool_oxide, Gamma_octalactone)
+    select(emmean, total_sugar, Sulcatone, Linalool, Beta_ionone)
 
 # Use createDataPartition instead of sample
 set.seed(11)
@@ -2414,25 +2417,20 @@ test_predictors <- as.matrix(test_data[, -1])
 dtrain <- xgb.DMatrix(data = train_predictors, label = train_data$emmean)
 dtest <- xgb.DMatrix(data = test_predictors, label = test_data$emmean)
 
-param_grid <- list(
-    eta = c(0.01, 0.1, 0.3),
-    max_depth = c(3, 6, 9),
-    subsample = c(0.5, 1.0),
-    colsample_bytree = c(0.5, 1.0)
-  )
+
 # Grid search parameters
-  param_grid <- list(
-    eta = c(0.01, 0.05, 0.1),
-    max_depth = c(2, 3, 4),
-    subsample = c(0.8, 0.9, 1.0),
-    colsample_bytree = c(0.7, 0.85, 1.0)
-  )
+  # param_grid <- list(
+  #   eta = c(0.01, 0.05, 0.1),
+  #   max_depth = c(2, 3, 4),
+  #   subsample = c(0.8, 0.9, 1.0),
+  #   colsample_bytree = c(0.7, 0.85, 1.0)
+  # )
 
 param_grid <- list(
     eta = seq(0.06,0.15,0.01),
     max_depth = c(3),
-    subsample = c(0.8),
-    colsample_bytree = c(0.7)#,
+    subsample = c(1),
+    colsample_bytree = c(1)#,
     # min_child_weight = c(1, 3),
     # gamma = c(0, 0.1) 
 )
@@ -2442,11 +2440,13 @@ set.seed(11)
 results <- grid_search_xgb(param_grid, dtrain)
 best_params <- results[which.min(results$best_rmse),]
 
-
+# Best params
+#     eta max_depth subsample colsample_bytree best_rmse best_iteration
+# 10 0.15         3         1                1  5.103844             34
 
 ```
 
-```{r XGBoost test model, eval=FALSE}
+```{r XGBoost test model, cache=TRUE}
 # run model with best parameters.
 set.seed(11)
 xgb_model <- xgboost(data = dtrain,
@@ -2466,13 +2466,13 @@ predictions <- predict(xgb_model, newdata = dtest)
 
 ### Table 7: XGBoost performance metrics
 
-```{r XGboost eval, eval=FALSE}
+```{r XGboost eval, cache=TRUE}
 # Model evaluation
 postResample(pred = predictions, obs = test_data[,"emmean"]) %>%
   as.data.frame() %>% rownames_to_column(var="Metric") %>% gt()
 ```
 
-```{r XGBoost pred vs obs, eval=FALSE, fig.height=7, fig.width=7}
+```{r XGBoost pred vs obs, cache=TRUE, fig.height=7, fig.width=7}
 # Create a scatter plot of predicted vs actual values for test data
 ggplot(data.frame(Predicted = predictions, 
                         Actual = test_data[,"emmean"]), 
@@ -2484,9 +2484,9 @@ ggplot(data.frame(Predicted = predictions,
   theme(plot.title =  element_text(hjust = 0.5), axis.title = element_text(size=14),title = element_text(size = 14))
 ```
 
-### Figure 13: XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, γ-Octalactone, linalool oxide and total sugar.
+### Figure 13: XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar.
 
-```{r feature importance plot, eval=FALSE}
+```{r feature importance plot, cache=TRUE}
 # Feature Importance
 importance_matrix <- xgb.importance(feature_names = colnames(train_data[,-1]),
                                     model = xgb_model)
@@ -2498,7 +2498,7 @@ xgb.plot.importance(importance_matrix,
 
 ### Table 8:
 
-```{r feature importance table, eval=FALSE}
+```{r feature importance table, cache=TRUE}
 importance_matrix %>% mutate(Feature = str_replace_all(Feature,c("_"=" ","total"="Total"))) %>% 
     gt() %>%
     tab_header(

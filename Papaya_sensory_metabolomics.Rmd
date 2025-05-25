@@ -221,12 +221,10 @@ VOCs <- res_sheets %>%
         pivot_longer(cols = (Hexanal:BITC),
                      names_to = "species",
                      values_to = "concentration") %>%
-        mutate(assay = .x,
-               Genotype = as.factor(Genotype))) %>%
+        mutate(assay = .x)) %>%
   list_rbind() %>%
   
-  # Clean and join data
-  mutate(Genotype = str_replace_all(Genotype, c("RB1_3" = "RB1", "Holland_5_3" = "Holland_5"))) %>%
+  # join data
   left_join(calibration_table) %>%
   left_join(genotype_table) %>%
   
@@ -428,8 +426,7 @@ print(knitr::kable(CCV_samples,
 
 ```{r combine data, cache=TRUE, cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR data","Sugar_transformation","OC transformations")}
 # Load proxy sugar/acid data, excluding redundant Genotype column
-proxy <- read_xlsx("data/22_23_proxy_sugar.xlsx", "all") %>% select(-Genotype)
-
+proxy <- read_xlsx("data/22_23_proxy_sugar.xlsx", "all") 
 # Combine multiple datasets
 conc_matrix <- full_join(sugar_data, GTR_data, relationship = "many-to-many") %>%  
   full_join(proxy, relationship = "many-to-many") %>% 
@@ -1277,7 +1274,9 @@ ggplot(all_plot_data %>% filter(sensory_group == "TX")) +
 
 ## Modelling consumer liking
 
-Trends within the individual consumer liking scores for each genotype were identified using the affinity propagation clustering algorithm (Frey and Dueck (2007)). The grouping of individual consumers into three distinct clusters reveals the interaction between their regular papaya consumption habit and how they scored each genotype during tasting. Moreover, there are indications that multiple genotypes maybe be accepted into the Australian market by different clusters of consumers. \### Cluster analysis
+Trends within the individual consumer liking scores for each genotype were identified using the affinity propagation clustering algorithm (Frey and Dueck (2007)). The grouping of individual consumers into three distinct clusters reveals the interaction between their regular papaya consumption habit and how they scored each genotype during tasting. Moreover, there are indications that multiple genotypes maybe be accepted into the Australian market by different clusters of consumers. 
+
+### Cluster analysis
 
 ```{r Consumer cluster analysis, results = FALSE, cache=TRUE, fig.height=7, fig.width=10, fig.dpi=600}
 consumer_data <- read_xlsx("data/consumer_data.xlsx")
@@ -1333,7 +1332,7 @@ ft <- flextable(tab_df) %>%
 # summarise cluster liking for each genotype
 
 cluster_summary <- consumer_clusters %>% select(-participant) %>%
-  pivot_longer(RB1:`Moonlight 1`,names_to = "var",values_to = "liking")
+  pivot_longer(1:9,names_to = "var",values_to = "liking")
 
 # ANOVA and Post-hoc 
 cluster_aov <- aov(liking ~ var * Cluster, data = cluster_summary)
@@ -1428,7 +1427,7 @@ ft
 ```{r Consumer cluster PCA, cache=TRUE, fig.height=6, fig.width=8, fig.dpi=600}
   # PCA clusters as variables -----
 pca_data <- cluster_data %>%
-  pivot_longer(RB1:`Moonlight 1`,names_to = "var",values_to = "liking") %>%
+  pivot_longer(5:13,names_to = "var",values_to = "liking") %>%
   group_by(Cluster,var) %>%
   summarise(mean_liking = mean(liking)) %>%  
   pivot_wider(names_from = "Cluster",values_from = "mean_liking") %>% 
@@ -1544,13 +1543,13 @@ model_data <-
 
 Models indicating variable influence on fruit liking can be produced from red-fleshed and yellow-fleshed data separately; however, with limited power due to sample size. Moreover, the liking scores are more accurately compared as a whole because the consumer participants tasted all samples in one sitting, as opposed to only red-fleshed and then only yellow-fleshed samples.
 
-Interestingly, it became clear in consumer tasting that RS5 (T2-6-5.27.12) wasn't an inherently bitter genotype; although it was thought to be from earlier sensory panels. Due to the constants of genotype liking, any samples displaying uncharacteristic flavour (likely due to poor fruit maturation) cause significant inaccuracies in modelling efforts. These samples were detected by comparing genotypes with equivalent liking scores. Therefore, samples were removed for further modelling: 03-302 and 03-669.
+Interestingly, it became clear in consumer tasting that PBL9 wasn't an inherently bitter genotype; although it was thought to be from earlier sensory panels. Due to the constants of genotype liking, any samples displaying uncharacteristic flavour (likely due to poor fruit maturation) cause significant inaccuracies in modelling efforts. These samples were detected by comparing genotypes with equivalent liking scores. Therefore, samples were removed for further modelling: 03-302 and 03-669.
 
 ```{r RS5 comparison, cache=TRUE, fig.height=6, fig.width=8, dpi=600}
 # find the source of confusion in cosumer liking modelling - filter for RS5/T2-6-5.27.12 and equivalently liked genotypes
 sample_review <- full_data_matrix %>% 
   select(-(5:40)) %>% 
-  filter(Genotype %in% c("T2-6-5.27.12","RB1","Hybrid_6")) %>% 
+  filter(Genotype %in% c("PBL9","RB1")) %>% 
   column_to_rownames(var = "ID")
 
 # PCA
@@ -1619,8 +1618,6 @@ ggplot(PCAvoctable) +
                   hjust=-0.15, vjust=0.20, size=3.2, box.padding = 0.1) + 
   scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090")) +
   geom_point(alpha = 1, size=2.5,color = "black") +
-  xlim(min(PCAvar_plot_data$Dim.1-2.9), max(PCAvar_plot_data$Dim.1)) + 
-  ylim(min(PCAvar_plot_data$Dim.2-0.3), max(PCAvar_plot_data$Dim.2)+0.9) +
   theme_bw() + theme(plot.background = element_blank(), 
                      panel.grid.major = element_blank(), 
                      panel.grid.minor = element_blank(),

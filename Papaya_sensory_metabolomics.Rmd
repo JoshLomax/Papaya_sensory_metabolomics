@@ -6,7 +6,8 @@ always_allow_html: yes
 output: 
     rmdformats::readthedown:
  #   bookdown::html_document2:
-      use_bookdown: TRUE
+      use_bookdown: true
+      self_contained: true
       includes:
         in_header: style/header.html
         after_body: style/external-links-js.html
@@ -15,14 +16,14 @@ output:
       #   version: 5
       #   bootswatch: simplex #sandstone #zephyr # yeti # united
         # primary: "#6CC3D4"
-      highlight: tango
+      highlight: pygments
       css: "style/style.css"
       # toc: true
       # toc_float: true
       # toc_depth: 4
   #    highlight: pygments
   
-      number_sections: false
+      number_sections: true
       code_folding: hide
 #      keep_md: true
 #bibliography: style/comparative_genomics.bib
@@ -33,6 +34,7 @@ csl: style/springer-basic-improved-author-date-with-italic-et-al-period.csl
 ```{r setup, include=FALSE}
 devtools::source_gist("7f63547158ecdbacf31b54a58af0d1cc", filename = "util.R")
 knitr::opts_chunk$set(list(echo = TRUE,
+                           # cache = TRUE,
                            eval=T,
                            message=FALSE,
                            comment='>',
@@ -42,7 +44,12 @@ knitr::opts_chunk$set(list(echo = TRUE,
 
 # add copy to clipboard icon
 # klippy::klippy(c('r', 'bash'), position = c('top', 'right'))
-
+# manually create tags and captions for tables (see https://gist.github.com/dmenne/f8eb291c9e71a5de44764d442e8bdefd#file-bookdowncrossreference-rmd)
+mcaption = function(tag, caption){
+  # Do not use underscores in tag!
+  stopifnot(length(grep("_", tag)) == 0)
+  cat("<caption>(#tab:", tag, ")", caption, "</caption>", sep="")
+}
 
 ```
 
@@ -77,7 +84,7 @@ The initial steps of the data analysis pipeline included:
 ```{r packages}
 # list of packages
 required_packages <- c(
-    "juba/rmdformats","kableExtra","gt","flextable","DT", # Document formatting & tables
+    "juba/rmdformats","kableExtra","gt","flextable","DT", "xfun", # Document formatting & tables
 
     "tidyverse","readxl","janitor", # Data wrangling
 
@@ -85,7 +92,7 @@ required_packages <- c(
 
     "FactoMineR","factoextra", # PCA & visualization
 
-    "car","agricolae","tableone", # Stats & summaries
+    "car","agricolae","tableone", "summarytools", # Stats & summaries
 
     "BGLR","caret","gbm","xgboost","apcluster","lme4","emmeans" # Modeling & ML
 )
@@ -101,7 +108,7 @@ pacman::p_load(char = basename(required_packages), install=FALSE)
 
 -   Compiling meta data
 
-```{r meta data, cache=F, collapse=TRUE}
+```{r meta data,  collapse=TRUE}
 # Load metadata from Excel
 genotype_table <- 
   read_excel("data/papaya_sample_meta_data.xlsx",
@@ -162,7 +169,7 @@ glimpse(class_key)
 
 -   Calculating VOC matrix effects
 
-```{r VOC Matrix Effect, collapse=TRUE, cache=TRUE}
+```{r VOC Matrix Effect, collapse=TRUE}
 calculate_matrix_effect <- function(data,col_range) {
   data %>%
     pivot_longer(
@@ -207,7 +214,7 @@ print(knitr::kable(matrix_effect[,c(1,7:8)],
 
 -   Transforming VOC data to ng/kg
 
-```{r VOC transformations, collapse=TRUE, cache=TRUE, dependson="VOC Matrix Effect"}
+```{r VOC transformations, collapse=TRUE,  dependson="VOC Matrix Effect"}
 calibration_table <- read_excel("data/Results_22_23.xlsx", "densities") %>% 
   select(Hexanal:Linalool) %>% 
   t() %>% as.data.frame() %>% rownames_to_column("species") %>% 
@@ -280,7 +287,7 @@ VOC_summary <- VOCs %>%
 
 -   Sugar extraction efficiency
 
-```{r Sugar extraction efficiency, collapse=TRUE, cache=TRUE}
+```{r Sugar extraction efficiency, collapse=TRUE}
 sugar_key <- read_xlsx("data/July24_all.xlsx", sheet = "eth_key")
 extraction_efficiency <-
   left_join(sugar_key, read_xlsx("data/July24_all.xlsx",
@@ -307,7 +314,7 @@ print(knitr::kable(extraction_efficiency,
 
 -   Sugar data unit transformation and imputation of missing values
 
-```{r Sugar_transformation, cache=TRUE, cache.lazy=FALSE, dependson="Sugar extraction efficiency", collapse=TRUE}
+```{r Sugar_transformation,  cache.lazy=FALSE, dependson="Sugar extraction efficiency", collapse=TRUE}
 bad_dry <- paste0("JL", 10:53) # compromised samples
 UI <- paste0("UI", 1:5) # auxiliary samples
 
@@ -364,7 +371,7 @@ glimpse(sugar_data)
 
 -   Glucotropaeolin unit transformation and QC analysis
 
-```{r GTR data, warning=FALSE, cache=TRUE, cache.lazy=FALSE, dependson="Sugar_transformation", collapse=TRUE}
+```{r GTR data, warning=FALSE,  cache.lazy=FALSE, dependson="Sugar_transformation", collapse=TRUE}
 # Read sample metadata and define sample IDs
 GTR_key <- read_xlsx("data/July24_all.xlsx", sheet = "meth_key")
 samples <- paste0("ME", seq(10, 136))
@@ -415,16 +422,17 @@ CCV_samples <- read_xlsx("data/GTR_data.xlsx", sheet = "GTR") %>%
   )
 
 # Display QC results
-print(knitr::kable(CCV_samples,
+kable(CCV_samples,
                    caption = "Quality Control Metrics for 1 mg/L Reference Standard (n=14)",
                    col.names = c("Mean (mg/L)", "SD (mg/L)", "RSD (%)"),
-                   digits = c(4, 4, 2)))
+                   digits = c(4, 4, 2) %>% 
+   kable_styling()
 
 ```
 
 -   Combining data and imputing missing data
 
-```{r combine data, cache=TRUE, cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR data","Sugar_transformation","OC transformations")}
+```{r combine data,  cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR data","Sugar_transformation","OC transformations")}
 # Load proxy sugar/acid data, excluding redundant Genotype column
 proxy <- read_xlsx("data/22_23_proxy_sugar.xlsx", "all") 
 # Combine multiple datasets
@@ -440,9 +448,10 @@ conc_matrix <- full_join(sugar_data, GTR_data, relationship = "many-to-many") %>
               values_from = corrected_conc_ppb)
 
 # missing results
-print(knitr::kable(conc_matrix[!complete.cases(conc_matrix),],
+kable(conc_matrix[!complete.cases(conc_matrix),],
                    caption = "Results with missing values",
-                   digits = 1))
+                   digits = 1) %>% 
+   kable_styling()
 
 # Get all imputed datasets using default parameters
 imp_vars <- c("GTR_conc","pH","Brix","TA")
@@ -496,7 +505,7 @@ print(summarytools::dfSummary(full_data_matrix,
 
 Metabolites with odour activity values less than one likely play a very minor role in fruit flavour; due to the small ranges and fluctuations, their influence on flavour may be overestimated in modelling. Moreover, sensory terms including prickly aftertaste and metallic aftertaste poorly differentiated the genotypes throughout descriptive analysis. Therefore these variables were removed to focus on highly relevant flavour variables.
 
-```{r OAV assessment, cache=T}
+```{r OAV assessment}
 # cut VOC variables
 no_aroma <- VOCs %>% 
   select(1:6,OAV) %>% 
@@ -512,7 +521,7 @@ poor_lexicon_use <- c("prickly_AT", "metallic_AT")
 
 Once these variables were removed the data was visualised using PCA to look at sensory and metabolite profiles of each genotype.
 
-```{r PCA sensory, fig.width=10, fig.height=8, fig.dpi=600, cache=TRUE}
+```{r PCA sensory, fig.width=10, fig.height=8, fig.dpi=600,  fig.cap="PCA biplot of 27 papaya genotype dipicting the variations in sensory profiles from quantitative descriptive analysis."}
 # data set up
 remove_vars <- c("Glucose_prop","Fructose_prop","Sucrose_prop","label","Genotype2")
 PCA_data <- full_data_matrix %>% 
@@ -614,9 +623,9 @@ ggplot(Mean_coords) +
         colour="Attribute", shape = "Havest Month") 
 ```
 
-### Figure 1: PCA biplot of 27 papaya genotype dipicting the variations in sensory profiles from quantitative descriptive analysis.
+<!-- ### Figure 1: PCA biplot of 27 papaya genotype dipicting the variations in sensory profiles from quantitative descriptive analysis. -->
 
-```{r PCA metabolites, fig.width=10, fig.height=8, fig.dpi=600, cache=TRUE}
+```{r PCA metabolites, fig.width=10, fig.height=8, fig.dpi=600,  fig.cap="CA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype."}
 PCA_vocs <- PCA(PCA_data, scale.unit = TRUE, 
                 ncp = 6, graph = F, 
                 quali.sup = c(1:3,31:48)) # all chem PCA
@@ -708,11 +717,11 @@ ggplot(Mean_coords) +
         colour="Attribute", shape = "Havest Month")
 ```
 
-### Figure 2: PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype.
+<!-- ### Figure 2: PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype. -->
 
 There appears to be a significant batch effect associated with metabolites with highly skewed distributions. After removing decanal, methyl hexanoate, octanal, (E)-2-nonanal and nonanal, the control genotypes are qualitatively similar in distance to what is observed in the sensory data.
 
-```{r PCA metabolites new, fig.width=10, fig.height=8, fig.dpi=600, cache=TRUE}
+```{r PCA metabolites new, fig.dpi=600, fig.height=8, fig.width=10,  fig.cap="PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype. Excluding decanal, methyl hexanoate, octanal, (E)-2-nonanal and nonanal."}
 PCA_vocs <- PCA(PCA_data, scale.unit = TRUE,
                 ncp = 6, graph = F,
                 quali.sup = c(1:3,21,23:26,31:48)) # omit decanal, methyl hexanoate, octanal, (E)-2-nonanal, nonanal
@@ -803,13 +812,13 @@ ggplot(Mean_coords) +
         colour="Attribute", shape = "Havest Month")
 ```
 
-### Figure 3: PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype. Excluding decanal, methyl hexanoate, octanal, (E)-2-nonanal and nonanal.
+<!-- ### Figure 3: PCA biplot of 27 papaya genotype dipicting the variations in metabolite profiles from targeted quantitative chemical assays. Including metabolites with concentrations theorectically above an odour threshold of one in one or more genotype. Excluding decanal, methyl hexanoate, octanal, (E)-2-nonanal and nonanal. -->
 
 ## Modelling the interactions between sensory and metabolite profiles
 
 Variable influences on traits were assessed using two complementary approaches: (1) generalised boosted regression (Friedman, 2001) to capture both main effects and interactions (x-axis), optimized using 10-fold cross-validation, and (2) Bayesian linear regression (BayesA; Meuwissen et al., 2001) to estimate individual additive effects without interactions (y-axis). Only variables that stood out from the rest were labelled due to space limitations.
 
-```{r Sensory modelling, cache=TRUE, results='hide', message=FALSE, warning=FALSE}
+```{r Sensory modelling,  results='hide', message=FALSE, warning=FALSE}
 scaled_matrix <- PCA_data %>% select(-c(1:3,21,23:26)) %>% scale()
 
 # Sensory subsetting
@@ -862,9 +871,17 @@ for (i in 1:18) {
     names(wts)[beta_name[i]] <- paste0(traits[i],"_beta")
   }
 }
+
+save(wts, "data/sensory_modelling.RData")
+
 ```
 
-```{r aroma metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+```{r load-sensory-modelling,  include=FALSE}
+load("data/sensory_modelling.RData")
+
+```
+
+```{r aroma metabolites, fig.cap="Variation in papaya aroma characteristics explained by targeted metabolites in 27 papaya genotypes." , fig.height= 10, fig.width = 8, fig.dpi = 600}
 # Plot prep ------------
 bglr_data <- wts %>% 
   select(all_of(beta_name)) %>% 
@@ -995,9 +1012,9 @@ ggplot(all_plot_data %>% filter(sensory_group == "AR")) +
   )
 ```
 
-### Figure 4: Variation in papaya aroma characteristics explained by targeted metabolites in 27 papaya genotypes.
+<!-- ### Figure 4: Variation in papaya aroma characteristics explained by targeted metabolites in 27 papaya genotypes. -->
 
-```{r Flavour metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+```{r Flavour metabolites, fig.height= 10, fig.width = 8, fig.dpi = 600, fig.cap="Variation in papaya aroma characteristics explained by targeted metabolites in 27 papaya genotypes"}
 
 # Filter for FL labels -------
 FL_label <- 
@@ -1100,9 +1117,9 @@ ggplot(all_plot_data %>% filter(sensory_group == "FL")) +
   )
 ```
 
-### Figure 5: Variation in papaya taste characteristics explained by targeted metabolites in 27 papaya genotypes.
+<!-- ### Figure 5: Variation in papaya taste characteristics explained by targeted metabolites in 27 papaya genotypes. -->
 
-```{r aftertaste metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+```{r aftertaste metabolites, fig.cap="Variation in papaya aftertaste characteristics explained by targeted metabolites in 27 papaya genotypes.", fig.height= 10, fig.width = 8, fig.dpi = 600}
 # First filter for AT labels -------
 AT_label <- 
   rbind(
@@ -1185,9 +1202,9 @@ ggplot(all_plot_data %>% filter(sensory_group == "AT")) +
   )
 ```
 
-### Figure 6: Variation in papaya aftertaste characteristics explained by targeted metabolites in 27 papaya genotypes.
+<!-- ### Figure 6: Variation in papaya aftertaste characteristics explained by targeted metabolites in 27 papaya genotypes. -->
 
-```{r texture metabolites, cache = TRUE, fig.height= 10, fig.width = 8, fig.dpi = 600}
+```{r texture metabolites, fig.cap="Variation in papaya texture characteristics explained by targeted metabolites in 27 papaya genotypes.", fig.height= 10, fig.width = 8, fig.dpi = 600}
 #First filter for TX labels -------
   TX_label <- 
   rbind(
@@ -1270,7 +1287,7 @@ ggplot(all_plot_data %>% filter(sensory_group == "TX")) +
   )
 ```
 
-### Figure 7: Variation in papaya texture characteristics explained by targeted metabolites in 27 papaya genotypes.
+<!-- ### Figure 7: Variation in papaya texture characteristics explained by targeted metabolites in 27 papaya genotypes. -->
 
 ## Modelling consumer liking
 
@@ -1278,7 +1295,7 @@ Trends within the individual consumer liking scores for each genotype were ident
 
 ### Cluster analysis
 
-```{r Consumer cluster analysis, results = FALSE, cache=TRUE, fig.height=7, fig.width=10, fig.dpi=600}
+```{r Consumer cluster analysis, results = FALSE,  fig.cap="Consumer liking score for nine papaya genotypes recorded by 125 untrained panelists. Each panelist was grouped into a cluster based on the affinity propagation clustering algorithm. There is an interaction between geotype liking scores and cluster membership (ANOVA; p <= 0.001). The differences between genotype liking scores among all clusters are indicated by different letters (SNK: p <= 0.05).", fig.height=7, fig.width=10, fig.dpi=600}
 consumer_data <- read_xlsx("data/consumer_data.xlsx")
 
 z <- consumer_data %>% 
@@ -1415,7 +1432,7 @@ scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
       name = 'Labeled Affective Magnitude (LAM) Scale'))
 ```
 
-### Figure 8: Consumer liking score for nine papaya genotypes recorded by 125 untrained panelists. Each panelist was grouped into a cluster based on the affinity propagation clustering algorithm. There is an interaction between geotype liking scores and cluster membership (ANOVA; p = \<0.001). The differences between genotype liking scores among all clusters are indicated by different letters (SNK: p = \<0.05).
+<!-- ### Figure 8: Consumer liking score for nine papaya genotypes recorded by 125 untrained panelists. Each panelist was grouped into a cluster based on the affinity propagation clustering algorithm. There is an interaction between geotype liking scores and cluster membership (ANOVA; p = \<0.001). The differences between genotype liking scores among all clusters are indicated by different letters (SNK: p = \<0.05). -->
 
 ### Table 2: Breakdown of demographic data and papaya consumption habits within each consumer cluster. Kruskal wallis was applied to age and fishers test was applied to gender and papaya consumption habit.
 
@@ -1424,7 +1441,7 @@ scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
 ft
 ```
 
-```{r Consumer cluster PCA, cache=TRUE, fig.height=6, fig.width=8, fig.dpi=600}
+```{r Consumer cluster PCA,  fig.cap="Principal component analysis of the liking scores for nine papaya genotypes reported by three distinct consumer clusters (consumer clusters were generated using agglomerative clustering algorithm): Cluster 1, n = 61; Cluster 2, n = 21; Cluster 3, n = 40.",  fig.height=6, fig.width=8, fig.dpi=600}
   # PCA clusters as variables -----
 pca_data <- cluster_data %>%
   pivot_longer(5:13,names_to = "var",values_to = "liking") %>%
@@ -1506,13 +1523,13 @@ ggplot(PCAvoctable) +
         colour="Consumer Cluster") 
 ```
 
-### Figure 9: Principal component analysis of the liking scores for nine papaya genotypes reported by three distinct consumer clusters (consumer clusters were generated using agglomerative clustering algorithm): Cluster 1, n = 61; Cluster 2, n = 21; Cluster 3, n = 40.
+<!-- ### Figure 9: Principal component analysis of the liking scores for nine papaya genotypes reported by three distinct consumer clusters (consumer clusters were generated using agglomerative clustering algorithm): Cluster 1, n = 61; Cluster 2, n = 21; Cluster 3, n = 40. -->
 
 There is an inherent limitation in the dataset whereby fruit included in the consumer study was not able to be used for chemical analysis. This is due to the logistical issues regarding adequate fruit collection and processing: the fruit that was collected was completely consumed by the panelists. To deal with this limitation best linear unbiased estimates were combined with previously collected sensory and metabolite data to represent the broad differences between genotype liking scores. This caveat likely leads to the underestimation of complex nuances between variables that influence papaya fruit liking. Therefore, the model generated from this data highlights larger variable variation between genotypes.
 
-### Table 3: Estimated marginal means from the mixed effects model including genotype as a fixed effect and participant as a random effect
+<!-- ### Table 3: Estimated marginal means from the mixed effects model including genotype as a fixed effect and participant as a random effect -->
 
-```{r Consumer mixed model, cache=TRUE}
+```{r Consumer mixed model}
 liking_fit <- lmer(liking ~ var +
                      (1|participant),
                    data = consumer_data)
@@ -1523,13 +1540,6 @@ blue_df <-
             specs = "var")) %>% 
   rename("Genotype2" = "var") 
 
-kable(blue_df,
-      col.names = c("Genotype","Least-squares mean",
-                    colnames(blue_df)[3:6]),
-      align = c("l",rep("c",5))) %>% 
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  row_spec(0, bold = TRUE)
-
 model_data <- 
   left_join(PCA_data %>% rownames_to_column(var = "ID"), genotype_table) %>% 
   left_join(blue_df) %>%
@@ -1538,6 +1548,14 @@ model_data <-
   select(-c(assay:Genotype,SE:upper.CL,label:Genotype2)) %>% 
   relocate(Flesh, .after = "emmean") %>% 
   select(-c(Decanal,Methyl_hexanoate,Octanal,E_2_nonal, Nonanal)) 
+
+kable(blue_df, caption = "Estimated marginal means from the mixed effects model including genotype as a fixed effect and participant as a random effect", 
+      col.names = c("Genotype","Least-squares mean",
+                    colnames(blue_df)[3:6]),
+      align = c("l",rep("c",5))) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(0, bold = TRUE)
+
   
 ```
 
@@ -1545,7 +1563,7 @@ Models indicating variable influence on fruit liking can be produced from red-fl
 
 Interestingly, it became clear in consumer tasting that PBL9 wasn't an inherently bitter genotype; although it was thought to be from earlier sensory panels. Due to the constants of genotype liking, any samples displaying uncharacteristic flavour (likely due to poor fruit maturation) cause significant inaccuracies in modelling efforts. These samples were detected by comparing genotypes with equivalent liking scores. Therefore, samples were removed for further modelling: 03-302 and 03-669.
 
-```{r RS5 comparison, cache=TRUE, fig.height=6, fig.width=8, dpi=600}
+```{r RS5 comparison,  fig.cap="PCA Bi-plot comparing red-fleshed papaya genotypes RB1, Hybrid 6 and RS5. All three genotypes received similar liking scores from 125 untrained panelists.", fig.height=6, fig.width=8, dpi=600}
 # find the source of confusion in cosumer liking modelling - filter for RS5/T2-6-5.27.12 and equivalently liked genotypes
 sample_review <- full_data_matrix %>% 
   select(-(5:40)) %>% 
@@ -1642,7 +1660,7 @@ model_data <- model_data[!rownames(model_data) %in% bitter_samples,]
 
 After these two samples were removed from the dataset, modelling the effect of sensory traits and metabolite traits on papaya liking scores better reflects what was observed. Similar to before gbm and bayesA were implemented to determine how the different variable groups influence papaya liking.
 
-```{r liking variable influence, cache=TRUE, results='hide', warning=FALSE}
+```{r liking variable influence,  results='hide', warning=FALSE}
 # Function to run models for a specific flesh type
 run_models <- function(data, flesh_type, met_cols, sens_cols, y_col = 41) {
   # 
@@ -1741,10 +1759,11 @@ results <- flesh_types %>%
   list_rbind() %>% 
   select(var, model, coord) %>% 
   mutate(model = sub("|", "_", model, fixed = TRUE))
+save(results, "data/liking_var_model.RData")
 
 ```
 
-```{r plot liking variables, cache=TRUE}
+```{r plot liking variables}
 # liking variable plots
 create_importance_plot <- function(data,
                                  data_type = c("mets", "sens"),
@@ -1832,6 +1851,8 @@ create_importance_plot <- function(data,
   return(p)
 }
 
+# load results
+load("data/liking_var_model.RData")
 # Prepare the data
 wts <- results %>%
   left_join(rbind(class_key, sensory_meta), by = "var") %>%
@@ -1894,21 +1915,21 @@ Sensory_plot <- create_importance_plot(
 )
 ```
 
-```{r metabolite liking plot, cache=TRUE, fig.height=6, fig.width=5, dpi=600}
+```{r metabolite liking plot, fig.cap="Metabolite characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores.",  fig.height=6, fig.width=5, dpi=600}
 metabolites_plot
 ```
 
-### Figure 11: Metabolite characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores.
+<!-- ### Figure 11: Metabolite characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores. -->
 
-```{r sensory liking plot, cache=TRUE, fig.height=6, fig.width=5, dpi=600}
+```{r sensory liking plot,  fig.cap="Sensory characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores.", fig.height=6, fig.width=5, dpi=600}
 Sensory_plot
 ```
 
-### Figure 12: Sensory characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores.
+<!-- ### Figure 12: Sensory characteristics that influence the consumer liking scores for nine papaya genotypes. Variable importance is estimated by gradient boosting machine analysis and Bayesian linear modelling (BayesA) estimates the correlation of each variable with papaya liking scores. -->
 
 Variance decomposition analysis is implemented to understand the variation in liking scores between the genotypes based on class groupings for sensory and metabolite variables. Such as taste or aroma for sensory characteristics and terpenes (volatile organic compound) or sugars (non-volatile organic compound) for metabolite variables. This provides a broader sense of the variables influencing fruit liking scores.
 
-```{r variance decomposition, cache=TRUE}
+```{r variance decomposition}
 # update model data
 model_data <- model_data %>% select(-Flesh)
 
@@ -2107,10 +2128,11 @@ sens_table_data <-
 # write table
 sens_table <- sens_table_data %>%
     gt() %>%
-    tab_header(
-        title = "Variance Components Analysis",
-        subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
-    ) %>%
+    tab_caption("Variance components analysis showing the proportion of variance in liking scores explained by sensory groups")
+    # tab_header(
+    #     title = "Variance Components Analysis",
+    #     subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
+    # ) %>%
     fmt_percent(
         columns = proportion,
         decimals = 1,
@@ -2135,16 +2157,20 @@ sens_table <- sens_table_data %>%
     )
 ```
 
-### Table 4
+<!-- *Table 4* -->
 
 ```{r sensory decomposition table}
-sens_table
+sens_table %>%
+    gt() %>%
+    tab_caption("Sensory decomposition")
 ```
 
-### Table 5
+*Table 5*
 
 ```{r metabolite decomposition table}
-mets_table
+mets_table%>%
+    gt() %>%
+    tab_caption("Metabolite decomposition")
 
 ```
 
@@ -2337,18 +2363,20 @@ flattened_results <- model_results %>% unnest(params)
 writexl::write_xlsx(flattened_results,"results/model_results.xlsx")
 ```
 
-### Table 6: Comparison of XGBoost performance metrics using different variables associated with papaya liking 
-```{r models_table}
+<!-- ### Table 6: Comparison of XGBoost performance metrics using different variables associated with papaya liking  -->
+```{r models-table, results='asis', echo=FALSE}
 flattened_results <- read_xlsx("data/model_results.xlsx")
 # Filter top results by RMSE
+mcaption("dt-models", "Comparison of XGBoost performance metrics using different variables associated with papaya liking")
 flattened_results %>% 
   slice_min(RMSE,n=150) %>% 
   mutate(across(where(is.numeric),~round(.x, digits = 2))) %>% 
-  datatable()
+  datatable(caption = "Comparison of XGBoost performance metrics using different variables associated with papaya liking")
+
 
 ```
 
-```{r xgboost fine-tuning, cache=TRUE}
+```{r xgboost fine-tuning}
 # Function to run 5-fold cross-validation using hyperparameter grid search
 run_xgb_cv <- function(params, dtrain, nrounds = 500, nfold = 5, early_stopping = 50) {
   cv <- xgb.cv(
@@ -2443,7 +2471,9 @@ best_params <- results[which.min(results$best_rmse),]
 
 ```
 
-```{r XGBoost test model, cache=TRUE}
+```{r XGBoost test model}
+
+
 # run model with best parameters.
 set.seed(11)
 xgb_model <- xgboost(data = dtrain,
@@ -2458,18 +2488,20 @@ xgb_model <- xgboost(data = dtrain,
 # Make predictions on test set
 predictions <- predict(xgb_model, newdata = dtest)
 
-
+save(dtrain, dtest, results, predictions, xgb_model, "data/xgboost_train_results.RData")
 ```
 
-### Table 7: XGBoost performance metrics
+<!-- ### Table 7: XGBoost performance metrics -->
 
-```{r XGboost eval, cache=TRUE}
+```{r XGboost eval}
+load("data/xgboost_train_results.RData")
 # Model evaluation
 postResample(pred = predictions, obs = test_data[,"emmean"]) %>%
-  as.data.frame() %>% rownames_to_column(var="Metric") %>% gt()
+  as.data.frame() %>% rownames_to_column(var="Metric") %>% gt() %>%
+    tab_caption("XGBoost performance metrics")
 ```
 
-```{r XGBoost pred vs obs, cache=TRUE, fig.height=7, fig.width=7}
+```{r XGBoost pred vs obs,  fig.cap="XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar.", fig.height=7, fig.width=7}
 # Create a scatter plot of predicted vs actual values for test data
 ggplot(data.frame(Predicted = predictions, 
                         Actual = test_data[,"emmean"]), 
@@ -2481,9 +2513,9 @@ ggplot(data.frame(Predicted = predictions,
   theme(plot.title =  element_text(hjust = 0.5), axis.title = element_text(size=14),title = element_text(size = 14))
 ```
 
-### Figure 13: XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar.
+<!-- ### Figure 13: XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar. -->
 
-```{r feature importance plot, cache=TRUE}
+```{r feature importance plot, fig.cap="XGBoost variable importance"}
 # Feature Importance
 importance_matrix <- xgb.importance(feature_names = colnames(train_data[,-1]),
                                     model = xgb_model)
@@ -2491,17 +2523,19 @@ xgb.plot.importance(importance_matrix,
                     main = "Feature Importance Plot")
 ```
 
-### Figure 14: XGBoost variable importance
+<!-- ### Figure 14:  -->
 
-### Table 8:
+<!-- ### Table 8: -->
 
-```{r feature importance table, cache=TRUE}
+```{r feature importance table}
 importance_matrix %>% mutate(Feature = str_replace_all(Feature,c("_"=" ","total"="Total"))) %>% 
     gt() %>%
-    tab_header(
-        title = "XGBoost Feature importance",
-        subtitle = "Features contributing to liking"
-    ) %>% 
+    tab_caption("XGBoost importance of features contributing to liking"
+    ) %>%
+    # tab_header(
+    #     title = "XGBoost Feature importance",
+    #     subtitle = "Features contributing to liking"
+    # ) %>% 
     fmt_percent(
         columns = everything(),
         decimals = 1, 
@@ -2520,7 +2554,7 @@ importance_matrix %>% mutate(Feature = str_replace_all(Feature,c("_"=" ","total"
 
 The summarised volatile concentrations are reported below
 
-### Table 9: Summary of VOCs across 27 papaya genotypes. Sugar values reported in g/100gFW; total soluble solids (brix) reported in °Brix; titratable acids reported in %CA; VOCs are reported in ppb; GTR reported in ppm.
+<!-- ### Table 9: Summary of VOCs across 27 papaya genotypes.  -->
 
 ```{r VOC summary, echo=FALSE}
 left_join(read_xlsx("data/VOC_meta.xlsx"), VOC_summary) %>% 
@@ -2529,14 +2563,18 @@ left_join(read_xlsx("data/VOC_meta.xlsx"), VOC_summary) %>%
     caption = "Summary of VOC concentrations (ppb) by chemical species",
     col.names = c("Species", "CAS Number", "RT (min)", "RI", "Chemical Class", "n", "Mean", "SD", "SE",   
 "Median", "Min", "Max", "N detected", "% detected"),
-    align = c('l', 'l', rep('c', 12)))
+    align = c('l', 'l', rep('c', 12))) %>% 
+   kable_styling()
 ```
+Sugar values reported in g/100gFW; total soluble solids (brix) reported in °Brix; titratable acids reported in %CA; VOCs are reported in ppb; GTR reported in ppm.
 
-### Table 10: Variable means for 27 papaya genotypes (standard deviation)
 
-```{r data summary by genotype, echo=FALSE}
+<!-- ### Table 10: Variable means for 27 papaya genotypes (standard deviation) -->
+
+```{r data-summary-by-genotype, echo=FALSE, results='asis'}
+mcaption("genotype-data-summary", "Variable means for 27 papaya genotypes (standard deviation)")
 data_summary_genotype %>% 
-  datatable()
+  datatable(caption = "Variable means for 27 papaya genotypes (standard deviation)")
 ```
 
 ------------------------------------------------------------------------

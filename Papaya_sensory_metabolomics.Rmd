@@ -203,13 +203,14 @@ matrix_effect_high <- read_xlsx("data/voc_matrix_effect.xlsx", "matrix high spli
 matrix_effect <- rbind(matrix_effect_high, matrix_effect_low) %>%
   mutate(species = str_replace_all(species, "-", "_"))
 
-print(knitr::kable(matrix_effect[,c(1,7:8)],
+knitr::kable(matrix_effect[,c(1,7:8)],
       col.names = c("Flesh Color",
                     "Matrix effect red",
                     "Matrix effect yellow"),
       digits = 1,
       align = c('l', 'c', 'c'),
-      caption = "matrix effect for VOC quantification"))
+      caption = "matrix effect for VOC quantification") %>% 
+  kable_styling()
 ```
 
 -   Transforming VOC data to ng/kg
@@ -302,13 +303,14 @@ extraction_efficiency <-
     extraction_efficiency_mean = mean(Sorbitol_extraction_prop*100),
     extraction_efficiency_sd = sd(Sorbitol_extraction_prop*100)
   )
-print(knitr::kable(extraction_efficiency,
+knitr::kable(extraction_efficiency,
       col.names = c("Flesh Color",
                     "Mean Recovery (%)",
                     "SD (%)"),
       digits = 1,
       align = c('l', 'c', 'c'),
-      caption = "Sorbitol extraction efficiency from freeze-dried tissue samples"))
+      caption = "Sorbitol extraction efficiency from freeze-dried tissue samples") %>% 
+  kable_styling()
 
 ```
 
@@ -335,14 +337,16 @@ raw_sugar <- left_join(sugar_key,
 
 # Missing values
 na_rows <- raw_sugar[!complete.cases(raw_sugar),]
-print(knitr::kable(na_rows,
-                   caption = "Missing values in sugar dataset"))
+knitr::kable(na_rows,
+                   caption = "Missing values in sugar dataset") %>% 
+  kable_styling()
 
 # Get all imputed datasets using default parameters
 set.seed(11)
 
 imp <- mice::mice(raw_sugar, m = 25, maxit = 100, print = FALSE)
-
+save(imp, file = "data/sugar_imp.RData")
+load("data/sugar_imp.RData")
 imputed_sugar <- complete(imp, "long") %>%
   group_by(ID) %>%
   summarise(across(c(mass, FW_factor, Glucose, Fructose, Sucrose), mean))
@@ -425,7 +429,7 @@ CCV_samples <- read_xlsx("data/GTR_data.xlsx", sheet = "GTR") %>%
 kable(CCV_samples,
                    caption = "Quality Control Metrics for 1 mg/L Reference Standard (n=14)",
                    col.names = c("Mean (mg/L)", "SD (mg/L)", "RSD (%)"),
-                   digits = c(4, 4, 2) %>% 
+                   digits = c(4, 4, 2)) %>% 
    kable_styling()
 
 ```
@@ -461,12 +465,15 @@ init <- mice::mice(conc_matrix,maxit=0)
 init$predictorMatrix[,] <- 0 
 init$predictorMatrix[imp_vars, c(sugar_vars,"BITC")] <- 1
 
-imp2 <- mice::mice(conc_matrix, predictorMatrix = init$predictorMatrix, m = 25, maxit = 100, print = FALSE)
+# imp2 <- mice::mice(conc_matrix, predictorMatrix = init$predictorMatrix, m = 25, maxit = 100, 
+#                    print = FALSE)
+# 
+# imputed_conc <- complete(imp2, "long") %>%
+#   group_by(ID) %>%
+#   summarise(across(all_of(imp_vars), mean))
 
-imputed_conc <- complete(imp2, "long") %>%
-  group_by(ID) %>%
-  summarise(across(all_of(imp_vars), mean))
-
+# save(imputed_conc, file = "data/imputed_conc.RData")
+load("data/imputed_conc.RData")
 # new dataset with mean values from 25 random imputations after 100 iterations (probably overkill)
 final_conc_matrix <- conc_matrix %>%
   select(-(all_of(imp_vars))) %>%
@@ -631,7 +638,7 @@ PCA_vocs <- PCA(PCA_data, scale.unit = TRUE,
                 quali.sup = c(1:3,31:48)) # all chem PCA
 
 # make a list of top variables based on visual assessment
-topvars <- PCA_vocs$var$contrib [,1:2] %>% as.data.frame() %>% 
+topvars <- PCA_vocs$var$contrib[,1:2] %>% as.data.frame() %>% 
   rownames_to_column(var = "species") %>% mutate (contribution = Dim.1 + Dim.2) %>% 
   top_n(22, contribution)
 
@@ -818,7 +825,7 @@ ggplot(Mean_coords) +
 
 Variable influences on traits were assessed using two complementary approaches: (1) generalised boosted regression (Friedman, 2001) to capture both main effects and interactions (x-axis), optimized using 10-fold cross-validation, and (2) Bayesian linear regression (BayesA; Meuwissen et al., 2001) to estimate individual additive effects without interactions (y-axis). Only variables that stood out from the rest were labelled due to space limitations.
 
-```{r Sensory modelling,  results='hide', message=FALSE, warning=FALSE}
+```{r Sensory modelling,  results='hide', message=FALSE, warning=FALSE, eval=FALSE}
 scaled_matrix <- PCA_data %>% select(-c(1:3,21,23:26)) %>% scale()
 
 # Sensory subsetting
@@ -848,12 +855,12 @@ for (i in 1:18) {
   
   ETA <- list(list(X = scaled_matrix[,1:22], model = 'BayesA'))
   
-  fit_BA <- BGLR(y = trnY, 
+  fit_BA <- BGLR::BGLR(y = trnY, 
                  ETA = ETA, 
                  nIter = 30000, 
                  burnIn = 10000,
                  thin = 100, 
-                 saveAt = '', 
+                 saveAt = 'data/', 
                  df0 = 5, 
                  S0 = NULL,
                  weights = NULL, 
@@ -872,7 +879,7 @@ for (i in 1:18) {
   }
 }
 
-save(wts, "data/sensory_modelling.RData")
+save(wts,traits,beta_name, gbm_name,  file = "data/sensory_modelling.RData")
 
 ```
 
@@ -1336,15 +1343,7 @@ tab1 <- CreateTableOne(vars = c("Gender", "age", "habit"),
                        data = cluster_membership,
                        factorVars = c("Gender", "habit"))
 
-# very convoluted way to make it look good in html
-tab_df <- 
-  as.data.frame(print(tab1)) %>%
-  rownames_to_column(var = "Consumer Cluster")
 
-# Create flextable
-ft <- flextable(tab_df) %>%
-  theme_vanilla() %>%
-  autofit()
 
 # summarise cluster liking for each genotype
 
@@ -1434,11 +1433,26 @@ scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
 
 <!-- ### Figure 8: Consumer liking score for nine papaya genotypes recorded by 125 untrained panelists. Each panelist was grouped into a cluster based on the affinity propagation clustering algorithm. There is an interaction between geotype liking scores and cluster membership (ANOVA; p = \<0.001). The differences between genotype liking scores among all clusters are indicated by different letters (SNK: p = \<0.05). -->
 
-### Table 2: Breakdown of demographic data and papaya consumption habits within each consumer cluster. Kruskal wallis was applied to age and fishers test was applied to gender and papaya consumption habit.
+<!-- ### Table 2:   -->
 
 ```{r cluster summary, fig.height=8, fig.width=6}
+# very convoluted way to make it look good in html
+tab_df <- 
+  as.data.frame(print(tab1)) %>%
+  rownames_to_column(var = "Consumer Cluster") %>% 
+  gt()  %>% 
+  tab_caption("Breakdown of demographic data and papaya consumption habits within each consumer cluster.") %>% 
+  tab_footnote(
+    footnote = "Kruskal wallis was applied to age and fishers test was applied to gender and papaya consumption habit.",
+    locations = cells_column_labels(columns = "Consumer Cluster")
+  )
+
+# # Create flextable
+# ft <- flextable(tab_df) %>%
+#   theme_vanilla() %>%
+#   autofit()
 # Display the table
-ft
+# ft
 ```
 
 ```{r Consumer cluster PCA,  fig.cap="Principal component analysis of the liking scores for nine papaya genotypes reported by three distinct consumer clusters (consumer clusters were generated using agglomerative clustering algorithm): Cluster 1, n = 61; Cluster 2, n = 21; Cluster 3, n = 40.",  fig.height=6, fig.width=8, fig.dpi=600}
@@ -1656,11 +1670,11 @@ bitter_samples <- c("03-302","03-669")
 model_data <- model_data[!rownames(model_data) %in% bitter_samples,]
 ```
 
-### Figure 10: PCA Bi-plot comparing red-fleshed papaya genotypes RB1, Hybrid 6 and RS5. All three genotypes received similar liking scores from 125 untrained panelists.
+<!-- ### Figure 10: PCA Bi-plot comparing red-fleshed papaya genotypes RB1, Hybrid 6 and RS5. All three genotypes received similar liking scores from 125 untrained panelists. -->
 
 After these two samples were removed from the dataset, modelling the effect of sensory traits and metabolite traits on papaya liking scores better reflects what was observed. Similar to before gbm and bayesA were implemented to determine how the different variable groups influence papaya liking.
 
-```{r liking variable influence,  results='hide', warning=FALSE}
+```{r liking variable influence,  results='hide', warning=FALSE, eval=FALSE}
 # Function to run models for a specific flesh type
 run_models <- function(data, flesh_type, met_cols, sens_cols, y_col = 41) {
   # 
@@ -1715,13 +1729,13 @@ run_models <- function(data, flesh_type, met_cols, sens_cols, y_col = 41) {
     )
 
     # BGLR
-    bglr_model <- BGLR(
+    bglr_model <- BGLR::BGLR(
       y = pap[,y_col],
       ETA = list(list(X = pap[,cols], model = 'BayesA')),
       nIter = model_params$bglr_iter,
       burnIn = model_params$bglr_burnin,
       thin = 100,
-      saveAt = '',
+      saveAt = 'data/',
       df0 = 5,
       R2 = 0.5
     )
@@ -1759,7 +1773,7 @@ results <- flesh_types %>%
   list_rbind() %>% 
   select(var, model, coord) %>% 
   mutate(model = sub("|", "_", model, fixed = TRUE))
-save(results, "data/liking_var_model.RData")
+save(results, file = "data/liking_var_model.RData")
 
 ```
 
@@ -1929,7 +1943,7 @@ Sensory_plot
 
 Variance decomposition analysis is implemented to understand the variation in liking scores between the genotypes based on class groupings for sensory and metabolite variables. Such as taste or aroma for sensory characteristics and terpenes (volatile organic compound) or sugars (non-volatile organic compound) for metabolite variables. This provides a broader sense of the variables influencing fruit liking scores.
 
-```{r variance decomposition}
+```{r variance decomposition, eval=FALSE}
 # update model data
 model_data <- model_data %>% select(-Flesh)
 
@@ -1974,7 +1988,7 @@ variance_decomp <- function(data, var_groups, response = "emmean") {
         burnIn = 10000,
         thin = 100,
         R2 = 0.5,
-        saveAt = ""
+        saveAt = "data/"
     )
 
     # Calculate variance components and proportions
@@ -2029,8 +2043,85 @@ mets_groups <- list(
 )
 
 # Metabolites analysis
-mets_results <- variance_decomp(model_data, mets_groups, response = "emmean")
+# mets_results <- variance_decomp(model_data, mets_groups, response = "emmean")
+save(mets_results, file = "data/mets_results.RData")
 
+# Create list of Sensory variables -------
+include_vars <- sensory_meta %>% 
+  filter(var %in% colnames(model_data))
+AR <- include_vars %>%
+    filter(group == "Aroma") %>%
+    select(var) %>% pull()
+TX <- include_vars %>%
+    filter(group == "Texture") %>%
+    select(var) %>% pull()
+FL <- include_vars %>%
+    filter(group == "Flavour") %>%
+    select(var) %>% pull()
+AT <- include_vars %>%
+    filter(group == "Aftertaste",
+           !str_detect(var,"_prop")) %>%
+    select(var) %>% pull()
+
+# Create groups list
+sens_groups <- list(
+    Aroma = AR,
+    Texture = TX,
+    Flavour = FL,
+    Aftertaste = AT)
+
+# Sensory analysis
+sens_results <- variance_decomp(model_data, sens_groups, response = "emmean")
+save(sens_results, file = "data/sens_results.RData")
+
+```
+
+<!-- *Table 4* -->
+
+```{r sensory decomposition table}
+load("data/sens_results.RData")
+# Organize data with row groups
+sens_table_data <- 
+  data.frame(category = names(sens_results$variance_proportions),
+             proportion = sens_results$variance_proportions) %>%
+  mutate(proportion = round(proportion * 100, 1),
+         category = str_replace(category,'residual', 'Residual'))
+# write table
+sens_table <- sens_table_data %>%
+    gt() %>%
+    tab_caption("Variance components analysis showing the proportion of variance in liking scores explained by sensory groups") %>% 
+    # tab_header(
+    #     title = "Variance Components Analysis",
+    #     subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
+    # ) %>%
+    fmt_percent(
+        columns = proportion,
+        decimals = 1,
+        scale_values = FALSE
+    ) %>%
+    cols_label(
+        category = "Sensory Group",
+        proportion = "Variance Explained (%)"
+    ) %>%
+    tab_style(
+        style = cell_borders(
+            sides = "bottom",
+            weight = px(2)
+        ),
+        locations = cells_row_groups()
+    ) %>%
+    opt_row_striping() %>%
+    tab_options(
+        row_group.background.color = "gray90",
+        table.border.top.width = px(3),
+        table.border.bottom.width = px(3)
+    )
+```
+
+<!-- *Table 5* -->
+
+```{r metabolite decomposition table}
+load("data/mets_results.RData")
 # Organize data with row groups
 mets_table_data <- 
   data.frame(category = names(mets_results$variance_proportions),
@@ -2054,10 +2145,11 @@ mets_table <- mets_table_data %>%
     gt(
         groupname_col = "group_type"
     ) %>%
-    tab_header(
-        title = "Variance Components Analysis",
-        subtitle = "Proportion of Variance in Liking Scores Explained by Metabolite Groups"
-    ) %>%
+    tab_caption("Variance components analysis showing the proportion of variance in liking scores explained by metabolite groups") %>% 
+    # tab_header(
+    #     title = "Variance Components Analysis",
+    #     subtitle = "Proportion of Variance in Liking Scores Explained by Metabolite Groups"
+    # ) %>%
     fmt_percent(
         columns = proportion,
         decimals = 1,
@@ -2092,85 +2184,6 @@ mets_table <- mets_table_data %>%
         table.border.bottom.width = px(3)
     )
 
-# Create list of Sensory variables -------
-include_vars <- sensory_meta %>% 
-  filter(var %in% colnames(model_data))
-AR <- include_vars %>%
-    filter(group == "Aroma") %>%
-    select(var) %>% pull()
-TX <- include_vars %>%
-    filter(group == "Texture") %>%
-    select(var) %>% pull()
-FL <- include_vars %>%
-    filter(group == "Flavour") %>%
-    select(var) %>% pull()
-AT <- include_vars %>%
-    filter(group == "Aftertaste",
-           !str_detect(var,"_prop")) %>%
-    select(var) %>% pull()
-
-# Create groups list
-sens_groups <- list(
-    Aroma = AR,
-    Texture = TX,
-    Flavour = FL,
-    Aftertaste = AT)
-
-# Sensory analysis
-sens_results <- variance_decomp(model_data, sens_groups, response = "emmean")
-
-# Organize data with row groups
-sens_table_data <- 
-  data.frame(category = names(sens_results$variance_proportions),
-             proportion = sens_results$variance_proportions) %>%
-  mutate(proportion = round(proportion * 100, 1),
-         category = str_replace(category,'residual', 'Residual'))
-# write table
-sens_table <- sens_table_data %>%
-    gt() %>%
-    tab_caption("Variance components analysis showing the proportion of variance in liking scores explained by sensory groups")
-    # tab_header(
-    #     title = "Variance Components Analysis",
-    #     subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
-    # ) %>%
-    fmt_percent(
-        columns = proportion,
-        decimals = 1,
-        scale_values = FALSE
-    ) %>%
-    cols_label(
-        category = "Sensory Group",
-        proportion = "Variance Explained (%)"
-    ) %>%
-    tab_style(
-        style = cell_borders(
-            sides = "bottom",
-            weight = px(2)
-        ),
-        locations = cells_row_groups()
-    ) %>%
-    opt_row_striping() %>%
-    tab_options(
-        row_group.background.color = "gray90",
-        table.border.top.width = px(3),
-        table.border.bottom.width = px(3)
-    )
-```
-
-<!-- *Table 4* -->
-
-```{r sensory decomposition table}
-sens_table %>%
-    gt() %>%
-    tab_caption("Sensory decomposition")
-```
-
-*Table 5*
-
-```{r metabolite decomposition table}
-mets_table%>%
-    gt() %>%
-    tab_caption("Metabolite decomposition")
 
 ```
 
@@ -2487,8 +2500,12 @@ xgb_model <- xgboost(data = dtrain,
 
 # Make predictions on test set
 predictions <- predict(xgb_model, newdata = dtest)
+# Feature Importance
+importance_matrix <- xgb.importance(feature_names = colnames(train_data[,-1]),
+                                    model = xgb_model)
 
-save(dtrain, dtest, results, predictions, xgb_model, "data/xgboost_train_results.RData")
+save(dtrain, dtest, results, predictions, xgb_model, importance_matrix, 
+     file = "data/xgboost_train_results.RData")
 ```
 
 <!-- ### Table 7: XGBoost performance metrics -->
@@ -2516,9 +2533,7 @@ ggplot(data.frame(Predicted = predictions,
 <!-- ### Figure 13: XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar. -->
 
 ```{r feature importance plot, fig.cap="XGBoost variable importance"}
-# Feature Importance
-importance_matrix <- xgb.importance(feature_names = colnames(train_data[,-1]),
-                                    model = xgb_model)
+
 xgb.plot.importance(importance_matrix,
                     main = "Feature Importance Plot")
 ```

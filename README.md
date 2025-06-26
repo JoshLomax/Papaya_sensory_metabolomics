@@ -72,11 +72,12 @@ git clone https://github.com/JoshLomax/Papaya_sensory_metabolomics/tree/main
 2. Install required R packages:
 ```bash
 # In R console
-install.packages("pacman")
-pacman::p_load("rmdformats", "kableExtra", "gt", "flextable", "DT", "tidyverse", "readxl", "janitor", "AMR", 
-               "ggpmisc", "ggthemes", "ggrepel", "geomtextpath", "scales", "FactoMineR", "factoextra",
+install.packages("pak")
+pak::pak(c("pacman", "rmdformats", "kableExtra", "gt",
+               "flextable", "DT","tidyverse", "readxl",
+               "janitor", "AMR", "ggpmisc", "ggthemes", "ggrepel", "geomtextpath", "scales", "FactoMineR", "factoextra",
                "car", "agricolae", "tableone", "summarytools", "BGLR", "caret", "gbm", "xgboost", 
-               "apcluster", "lme4", "emmeans")
+               "apcluster", "lme4", "emmeans"))
 ```
 
 ## Usage (in review)

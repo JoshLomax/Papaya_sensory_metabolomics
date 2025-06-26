@@ -1,52 +1,35 @@
-<!DOCTYPE html>
-<html lang="en-AU">
-<head>
-<meta charset="UTF-8">
-<title>Papaya Sensory Profile Metabolomics Analysis</title>
-</head>
-<body>
+# Papaya Sensory Profile Metabolomics Analysis
 
-<div class="badges">
-<img src="https://img.shields.io/badge/status-active-green" alt="Project Status">
-<img src="https://img.shields.io/badge/R-%3E%3D4.0.0-blue" alt="R Version">
-<img src="https://img.shields.io/badge/last%20updated-February%202024-yellowgreen" alt="Last Updated">
-</div>
+![Project Status](https://img.shields.io/badge/status-active-green)
+![R Version](https://img.shields.io/badge/R-%3E%3D4.0.0-blue)
+![Last Updated](https://img.shields.io/badge/last%20updated-February%202024-yellowgreen)
 
-<h2>Table of Contents</h2>
-<nav>
-<ul>
-    <li><a href="#overview">Overview</a></li>
-    <li><a href="#project-structure">Project Structure</a></li>
-    <li><a href="#prerequisites">Prerequisites</a></li>
-    <li><a href="#installation">Installation</a></li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#data-analysis-pipeline">Data Analysis Pipeline</a></li>
-    <li><a href="#analysis-methods">Analysis Methods</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#licence">Licence</a></li>
-    <li><a href="#citation">Citation</a></li>
-    <li><a href="#contact">Contact</a></li>
-</ul>
-</nav>
+## Table of Contents
+- [Overview](#overview)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Data Analysis Pipeline](#data-analysis-pipeline)
+- [Analysis Methods](#analysis-methods)
+- [Contributing](#contributing)
+- [Licence](#licence)
+- [Citation](#citation)
+- [Contact](#contact)
 
-<section id="overview">
-<h2>Overview</h2>
-<p>This project analyses the relationship between metabolites and sensory profiles in papaya fruits, focusing on taste and aroma characteristics. The analysis combines metabolomics data with sensory evaluation to identify key markers for fruit flavour selection in breeding programmes.</p>
+## Overview
+This project analyses the relationship between metabolites and sensory profiles in papaya fruits, focusing on taste and aroma characteristics. The analysis combines metabolomics data with sensory evaluation to identify key markers for fruit flavour selection in breeding programmes.
 
-<h3>Key Features</h3>
-<ul>
-    <li>Comprehensive metabolomic analysis of 27 papaya genotypes</li>
-    <li>Integration of sensory evaluation data from trained panels</li>
-    <li>Machine learning models for flavour prediction</li>
-    <li>Statistical analysis of consumer preferences</li>
-    <li>Metabolite concentration quantification</li>
-    <li>Consumer preference analysis with 125 participants</li>
-</ul>
-</section>
+### Key Features
+- Comprehensive metabolomic analysis of 27 papaya genotypes
+- Integration of sensory evaluation data from trained panels
+- Machine learning models for flavour prediction
+- Statistical analysis of consumer preferences
+- Metabolite concentration quantification
+- Consumer preference analysis with 125 participants
 
-<section id="project-structure">
-<h2>Project Structure</h2>
-<pre>
+## Project Structure
+```
 papaya-metabolomics/
 │
 ├── data/
@@ -67,161 +50,114 @@ papaya-metabolomics/
 │
 └── R/
     └── analysis_scripts/
-</pre>
-</section>
+```
 
-<section id="prerequisites">
-<h2>Prerequisites</h2>
-<ul>
-    <li>R >= 4.0.0</li>
-    <li>RStudio (recommended)</li>
-</ul>
-
-<h3>Required R packages:</h3>
-<pre><code>required_packages <- c(
+## Prerequisites
+- R >= 4.0.0
+- RStudio (recommended)
+- Required R packages:
+  ```R
+  required_packages <- c(
     'rmdformats', 'kableExtra', 'gt', 'flextable', 'DT',
     'tidyverse', 'readxl', 'janitor', 'AMR',
     'ggpmisc', 'ggthemes', 'ggrepel', 'geomtextpath', 'scales',
     'FactoMineR', 'factoextra',
     'car', 'agricolae', 'tableone', 'summarytools',
     'BGLR', 'caret', 'gbm', 'xgboost', 'apcluster', 'lme4', 'emmeans'
-)</code></pre>
-</section>
+  )
+  ```
 
-<section id="installation">
-<h2>Installation</h2>
-<ol>
-    <li>Clone the repository:
-        <pre><code>git clone https://github.com/username/papaya-metabolomics.git
-cd papaya-metabolomics</code></pre>
-    </li>
-    <li>Install required R packages:
-        <pre><code>if (!require('pacman')) install.packages('pacman')
-pacman::p_load(char = required_packages, install = TRUE)</code></pre>
-    </li>
-</ol>
-</section>
+## Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/username/papaya-metabolomics.git
+   cd papaya-metabolomics
+   ```
 
-<section id="usage">
-<h2>Usage</h2>
-<ol>
-    <li>Open the R project in RStudio</li>
-    <li>Run the main analysis script:
-        <pre><code>source('analysis_scripts/main.R')</code></pre>
-    </li>
-</ol>
-</section>
+2. Install required R packages:
+   ```R
+   if (!require('pacman')) install.packages('pacman')
+   pacman::p_load(char = required_packages, install = TRUE)
+   ```
 
-<section id="data-analysis-pipeline">
-<h2>Data Analysis Pipeline</h2>
-<ol>
-    <li>Data Preprocessing
-        <ul>
-            <li>VOC matrix effects calculation</li>
-            <li>Sugar extraction efficiency analysis</li>
-            <li>Data transformation and normalisation</li>
-            <li>Missing value imputation</li>
-        </ul>
-    </li>
-    <li>Statistical Analysis
-        <ul>
-            <li>Principal Component Analysis (PCA)</li>
-            <li>Machine Learning Models</li>
-            <li>Sensory Profile Analysis</li>
-        </ul>
-    </li>
-</ol>
-</section>
+## Usage
+1. Open the R project in RStudio
+2. Run the main analysis script:
+   ```R
+   source('analysis_scripts/main.R')
+   ```
 
-<section id="analysis-methods">
-<h2>Analysis Methods</h2>
+## Data Analysis Pipeline
+1. Data Preprocessing
+   - VOC matrix effects calculation
+   - Sugar extraction efficiency analysis
+   - Data transformation and normalisation
+   - Missing value imputation
 
-<h3>Sensory Analysis</h3>
-<ul>
-    <li>Trained panel evaluations using Quantitative Descriptive Analysis (QDA)</li>
-    <li>Consumer panel with 125 participants</li>
-    <li>Randomised complete block design</li>
-    <li>Purpose-built sensory laboratory settings (22°C, LED daylight-equivalent lighting)</li>
-</ul>
+2. Statistical Analysis
+   - Principal Component Analysis (PCA)
+   - Machine Learning Models
+   - Sensory Profile Analysis
 
-<h3>Modelling Approaches</h3>
-<ol>
-    <li><strong>Generalised Boosted Regression</strong>
-        <ul>
-            <li>Captures main effects and interactions</li>
-            <li>10-fold cross-validation optimisation</li>
-            <li>Implementation using GBM package</li>
-        </ul>
-    </li>
-    <li><strong>Bayesian Linear Regression (BayesA)</strong>
-        <ul>
-            <li>Estimates individual additive effects</li>
-            <li>No interaction terms</li>
-            <li>30,000 iterations with 10,000 burn-in</li>
-        </ul>
-    </li>
-</ol>
+## Analysis Methods
 
-<h3>Consumer Analysis</h3>
-<ul>
-    <li>Demographic data collection</li>
-    <li>Age distribution analysis</li>
-    <li>Gender representation</li>
-    <li>Consumption habit assessment</li>
-    <li>Preference correlation studies</li>
-</ul>
+### Sensory Analysis
+- Trained panel evaluations using Quantitative Descriptive Analysis (QDA)
+- Consumer panel with 125 participants
+- Randomised complete block design
+- Purpose-built sensory laboratory settings (22°C, LED daylight-equivalent lighting)
 
-<h3>Visualisation Methods</h3>
-<ul>
-    <li>Faceted plots for metabolite relationships</li>
-    <li>PCA biplots for genotype clustering</li>
-    <li>Consumer demographic distributions</li>
-    <li>Variable importance plots</li>
-</ul>
-</section>
+### Modelling Approaches
+1. **Generalised Boosted Regression**
+   - Captures main effects and interactions
+   - 10-fold cross-validation optimisation
+   - Implementation using GBM package
 
-<section id="contributing">
-<h2>Contributing</h2>
-<ol>
-    <li>Fork the repository</li>
-    <li>Create a feature branch</li>
-    <li>Commit your changes</li>
-    <li>Push to the branch</li>
-    <li>Open a Pull Request</li>
-</ol>
-</section>
+2. **Bayesian Linear Regression (BayesA)**
+   - Estimates individual additive effects
+   - No interaction terms
+   - 30,000 iterations with 10,000 burn-in
 
-<section id="licence">
-<h2>Licence</h2>
-<p>This project is licenced under the MIT Licence - see the <a href="LICENCE">LICENCE</a> file for details.</p>
-</section>
+### Consumer Analysis
+- Demographic data collection
+- Age distribution analysis
+- Gender representation
+- Consumption habit assessment
+- Preference correlation studies
 
-<section id="citation">
-<h2>Citation</h2>
-<pre><code>@article{lomaxMultiomicApplicationsUnderstanding2024,
+### Visualisation Methods
+- Faceted plots for metabolite relationships
+- PCA biplots for genotype clustering
+- Consumer demographic distributions
+- Variable importance plots
+
+## Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
+
+## Licence
+This project is licenced under the MIT Licence - see the [LICENCE](LICENCE) file for details.
+
+## Citation
+```bibtex
+@article{lomaxMultiomicApplicationsUnderstanding2024,
   author = {Joshua Lomax and Ido Bar},
   doi = {10.5281/zenodo.15746218}
   publisher = {Zenodo},
   title = {JoshLomax/Papaya_sensory_metabolomics: Metabolomics analysis of Papaya sensory profiles (Version V1)},
   url = {https://doi.org/10.5281/zenodo.15746218},
   year = {2025}
-}</code></pre>
-</section>
+}
+```
 
-<section id="contact">
-<h2>Contact</h2>
-<ul>
-    <li><strong>Josh Lomax</strong> - <a href="https://github.com/JoshLomax">GitHub Profile</a></li>
-    <li><strong>Ido Bar</strong> - <a href="https://github.com/IdoBar">GitHub Profile</a></li>
-</ul>
+## Contact
+- **Josh Lomax** - [GitHub Profile](https://github.com/JoshLomax)
+- **Ido Bar** - [GitHub Profile](https://github.com/IdoBar)
 
-<p>Project Link: <a href="https://github.com/username/papaya-metabolomics">https://github.com/username/papaya-metabolomics</a></p>
-</section>
+Project Link: [https://github.com/username/papaya-metabolomics](https://github.com/username/papaya-metabolomics)
 
-<footer>
-<hr>
-<p>Last Updated: June 2025</p>
-</footer>
-
-</body>
-</html>
+---
+Last Updated: June 2025

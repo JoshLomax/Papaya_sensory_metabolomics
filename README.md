@@ -82,10 +82,8 @@ pak::pak(c("pacman", "rmdformats", "kableExtra", "gt",
 
 ## Usage (in review)
 1. Open the R project in RStudio
-2. Run the main analysis script:
-```bash
-source('NA')
-```
+2. Use scripts in the Rmarkdown to run your own analysis including this data
+
 
 ## Data Analysis Pipeline
 1. Data Preprocessing
@@ -139,7 +137,7 @@ source('NA')
 5. Open a Pull Request
 
 ## Licence
-This project is licenced under the MIT Licence - see the [LICENCE](LICENCE) file for details.
+This project is licenced under the MIT Licence - see the [LICENCE](https://github.com/JoshLomax/Papaya_sensory_metabolomics/tree/main?tab=readme-ov-file#) file for details.
 
 ## Citation
 

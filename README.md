@@ -137,7 +137,7 @@ pak::pak(c("pacman", "rmdformats", "kableExtra", "gt",
 5. Open a Pull Request
 
 ## Licence
-This project is licenced under the MIT Licence - see the [LICENCE](https://github.com/JoshLomax/Papaya_sensory_metabolomics/tree/main?tab=readme-ov-file#) file for details.
+This project is licenced under the MIT Licence - see the [LICENCE](https://github.com/JoshLomax/Papaya_sensory_metabolomics/tree/main?tab=License-1-ov-file) file for details.
 
 ## Citation
 

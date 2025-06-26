@@ -54,37 +54,36 @@ papaya-metabolomics/
 - Required R packages:
 
 ```bash
-rmdformats, kableExtra, gt, flextable, DT
-tidyverse, readxl, janitor, AMR
-ggpmisc, ggthemes, ggrepel, geomtextpath, scales
-FactoMineR, factoextra
-car, agricolae, tableone, summarytools
-BGLR, caret, gbm, xgboost, apcluster, lme4, emmeans
+"rmdformats", "kableExtra", "gt", "flextable", "DT"
+"tidyverse", "readxl", "janitor", "AMR"
+"ggpmisc", "ggthemes", "ggrepel", "geomtextpath", "scales"
+"FactoMineR", "factoextra"
+"car", "agricolae", "tableone", "summarytools"
+"BGLR", "caret", "gbm", "xgboost", "apcluster", "lme4", "emmeans"
 ```
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/username/papaya-metabolomics.git
-cd papaya-metabolomics
+git clone https://github.com/JoshLomax/Papaya_sensory_metabolomics/tree/main
 ```
 
 2. Install required R packages:
 ```bash
 # In R console
 install.packages("pacman")
-pacman::p_load(rmdformats, kableExtra, gt, flextable, DT, tidyverse, readxl, janitor, AMR, 
-               ggpmisc, ggthemes, ggrepel, geomtextpath, scales, FactoMineR, factoextra,
-               car, agricolae, tableone, summarytools, BGLR, caret, gbm, xgboost, 
-               apcluster, lme4, emmeans)
+pacman::p_load("rmdformats", "kableExtra", "gt", "flextable", "DT", "tidyverse", "readxl", "janitor", "AMR", 
+               "ggpmisc", "ggthemes", "ggrepel", "geomtextpath", "scales", "FactoMineR", "factoextra",
+               "car", "agricolae", "tableone", "summarytools", "BGLR", "caret", "gbm", "xgboost", 
+               "apcluster", "lme4", "emmeans")
 ```
 
-## Usage
+## Usage (in review)
 1. Open the R project in RStudio
 2. Run the main analysis script:
 ```bash
-source('analysis_scripts/main.R')
+source('NA')
 ```
 
 ## Data Analysis Pipeline

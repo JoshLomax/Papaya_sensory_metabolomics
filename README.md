@@ -142,7 +142,13 @@ source('NA')
 This project is licenced under the MIT Licence - see the [LICENCE](LICENCE) file for details.
 
 ## Citation
-```bibtex
+
+To cite this repository:
+
+JoshLomax, & Ido Bar. (2025). JoshLomax/Papaya_sensory_metabolomics: Metabolomics analysis of Papaya sensory profiles (Version V1). Zenodo. https://doi.org/10.5281/zenodo.15746218
+
+BibTeX format:
+```
 @article{lomaxMultiomicApplicationsUnderstanding2024,
   author = {Joshua Lomax and Ido Bar},
   doi = {10.5281/zenodo.15746218},

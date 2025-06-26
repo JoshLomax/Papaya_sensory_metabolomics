@@ -163,7 +163,7 @@ BibTeX format:
 - **Josh Lomax** - [GitHub Profile](https://github.com/JoshLomax)
 - **Ido Bar** - [GitHub Profile](https://github.com/IdoBar)
 
-Project Link: [https://github.com/username/papaya-metabolomics](https://github.com/username/papaya-metabolomics)
+Published article: [Under review](...)
 
 ---
 Last Updated: June 2025

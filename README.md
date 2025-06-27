@@ -2,7 +2,7 @@
 
 [![Project Status](https://img.shields.io/badge/status-active-green)](https://img.shields.io/badge/status-active-green)
 [![R Version](https://img.shields.io/badge/R-%3E%3D4.0.0-blue)](https://img.shields.io/badge/R-%3E%3D4.0.0-blue)
-[![Last Updated](https://img.shields.io/badge/last%20updated-february%202024-yellowgreen)](https://img.shields.io/badge/last%20updated-february%202024-yellowgreen)
+[![Last Updated](https://img.shields.io/badge/last%20updated-June%202025-yellowgreen)](https://img.shields.io/badge/last%20updated-June%202025-yellowgreen)
 
 ## Table of Contents
 - [Overview](#overview)
@@ -147,7 +147,7 @@ JoshLomax, & Ido Bar. (2025). JoshLomax/Papaya_sensory_metabolomics: Metabolomic
 
 BibTeX format:
 ```
-@article{lomaxMultiomicApplicationsUnderstanding2024,
+@article{lomaxMultiomicApplicationsUnderstanding2025,
   author = {Joshua Lomax and Ido Bar},
   doi = {10.5281/zenodo.15746218},
   publisher = {Zenodo},

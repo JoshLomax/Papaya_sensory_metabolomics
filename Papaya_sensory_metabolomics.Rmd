@@ -38,6 +38,7 @@ knitr::opts_chunk$set(list(echo = TRUE,
                            # cache = TRUE,
                            eval=T,
                            message=FALSE,
+                           warning=FALSE,
                            comment='>',
                            fig.width = 6,
                            fig.height = 4,
@@ -68,7 +69,7 @@ The aim of this project was to determine the role of flavour related metabolites
 
 ## Methods
 
-Sensory data was collected by a trained and untrained panel of tasters. The trained panel undertook standard quantitative descriptive analysis (QDA) for 27 papaya genotypes. The untrained panelists consisted of 125 consumers recruit for a "tropical fruit tasting", who then scored nine disctinctly flavoured papaya genotypes using a labelled affective magnitude scale between 0 to 100 for liking.
+Sensory data was collected by a trained and untrained panel of tasters. The trained panel undertook standard quantitative descriptive analysis (QDA) for 27 papaya genotype.(detailed methods can be found at [S1 - Sensory methods supplementary](supp/S1.pdf)). The untrained panelists consisted of 125 consumers recruited for a "tropical fruit tasting", who then scored nine distinctly flavoured papaya genotypes using a labelled affective magnitude scale between 0 to 100 for liking. 
 
 Papaya fruit was collected from a single location (Dimbulah, QLD, AUS) on four separate occasions: August 2022 (QDA), February 2023 (QDA), January 2024 (Consumer) and February 2024 (QDA). The fruit was collected and treated aligned with industry management practices (e.g. ripening index 2-3, fungicide/ethylene, refrigerated truck transportation).
 
@@ -498,7 +499,6 @@ data_summary_genotype <-
 
 ## Sensory and metabolite data summary
 
-Sensory data evaluations were conducted in a purpose-built sensory laboratory (Food Quality lab at the Centre for Nutrition and Food Sciences; The Queensland Alliance for Agriculture and Food Innovation, University of Queensland), equipped with 14 isolated sensory booths, temperature control (22°C), and LED daylight-equivalent lighting. Six formal sessions were conducted in a single-blind randomised block design, with participants recording their ratings for each genotype. To minimize taster fatigue, sessions were limited to two per day. The data from the first two sessions were considered dummy data and discarded (detailed methods can be found at [Sensory methods supplementary](supp/appendix2.pdf))
 
 ```{r sesnsory-metabolite-data-summary}
 print(summarytools::dfSummary(full_data_matrix,

@@ -69,7 +69,137 @@ The aim of this project was to determine the role of flavour related metabolites
 
 ## Methods
 
-Sensory data was collected by a trained and untrained panel of tasters. The trained panel undertook standard quantitative descriptive analysis (QDA) for 27 papaya genotype.(detailed methods can be found at [S1 - Sensory methods supplementary](supp/S1.pdf)). The untrained panelists consisted of 125 consumers recruited for a "tropical fruit tasting", who then scored nine distinctly flavoured papaya genotypes using a labelled affective magnitude scale between 0 to 100 for liking. 
+Sensory data was collected by a trained and untrained panel of tasters. The trained panel undertook standard quantitative descriptive analysis (QDA) for 27 papaya genotype.(detailed methods can be found at [S1 - Sensory methods supplementary](supp/S1.pdf)). The untrained panelists consisted of 125 consumers recruited for a "tropical fruit tasting", who then scored nine distinctly flavoured papaya genotypes using a labelled affective magnitude scale between 0 to 100 for liking.
+```{r Genotype-table, echo=FALSE}
+genotype_table <- data.frame(
+  Genotype = c(
+    "Solo",
+    "Holland 5",
+    "Holland 6",
+    "Tainung 2",
+    "Eksotika",
+    "F1 Malay",
+    "First Lady",
+    "RB1",
+    "1B",
+    "PBL15",
+    "PBL14",
+    "PBL13",
+    "PBL12",
+    "PBL11",
+    "PBL10",
+    "PBL9",
+    "PBL8",
+    "PBL7",
+    "PBL6",
+    "Sunlight 3",
+    "PBL4",
+    "PBL3",
+    "PBL1",
+    "Sunlight 1",
+    "Sunlight 2",
+    "PBL16",
+    "PBL21"
+  ),
+  Flesh_colour = c(
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Yellow",
+    "Yellow",
+    "Yellow",
+    "Yellow",
+    "Yellow",
+    "Yellow",
+    "Yellow",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red",
+    "Red"
+  ),
+  Origin = c(
+    "Hawaii",
+    "Thailand",
+    "Thailand",
+    "Taiwan",
+    "Malaysia",
+    "Malaysia",
+    "Thailand",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia",
+    "Australia"
+  ),
+  Type = c(
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "Cultivar",
+    "F5 breeding line",
+    "F5 breeding line",
+    "F5 breeding line",
+    "F5 breeding line",
+    "F5 breeding line",
+    "F5 breeding line",
+    "F6 breeding line",
+    "F6 breeding line",
+    "F6 breeding line",
+    "F6 breeding line",
+    "F6 breeding line",
+    "F7 breeding line",
+    "F7 breeding line",
+    "F7 breeding line",
+    "F7 breeding line",
+    "F7 breeding line",
+    "F1 hybrid breeding line",
+    "F1 hybrid breeding line"
+  )
+)
+library(flextable)
+library(tidyverse)
+flextable(genotype_table) %>%
+  set_header_labels(Flesh_colour = "Flesh colour") %>%
+  theme_vanilla() %>%
+  set_caption(caption = "Genotype information for papaya varieties used in this study.") %>% 
+  align(j = 1, align = "left") %>%
+  align(j = 2:4, align = "center") %>%
+  bold(j = 1) %>%
+  autofit()
+```
 
 Papaya fruit was collected from a single location (Dimbulah, QLD, AUS) on four separate occasions: August 2022 (QDA), February 2023 (QDA), January 2024 (Consumer) and February 2024 (QDA). The fruit was collected and treated aligned with industry management practices (e.g. ripening index 2-3, fungicide/ethylene, refrigerated truck transportation).
 
@@ -438,7 +568,7 @@ kbl(CCV_samples,
 
 -   Combining data and imputing missing data
 
-```{r combine data,  cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR-data","Sugar-transformation","OC-transformations")}
+```{r combine-data,  cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR-data","Sugar-transformation","OC-transformations")}
 # Load proxy sugar/acid data, excluding redundant Genotype column
 proxy <- read_xlsx("data/22_23_proxy_sugar.xlsx", "all") 
 # Combine multiple datasets
@@ -1130,7 +1260,7 @@ ggplot(all_plot_data %>% filter(sensory_group == "FL")) +
 
 <!-- ### Figure 5: Variation in papaya taste characteristics explained by targeted metabolites in 27 papaya genotypes. -->
 
-```{r aftertaste metabolites, fig.cap="Variation in papaya aftertaste characteristics explained by targeted metabolites in 27 papaya genotypes.", fig.height= 10, fig.width = 8, fig.dpi = 600}
+```{r aftertaste-metabolites, fig.cap="Variation in papaya aftertaste characteristics explained by targeted metabolites in 27 papaya genotypes.", fig.height= 10, fig.width = 8, fig.dpi = 600}
 # First filter for AT labels -------
 AT_label <- 
   rbind(
@@ -1374,11 +1504,11 @@ z <- consumer_data %>%
 set.seed(11)
 a = apcluster(negDistMat(r=2), x=z, q=0)
 
-# cluster exemplars
-clusters_eg <- a@exemplars %>% unname()
-kableExtra::kbl(consumer_data[clusters_eg,],
-      col.names = c("Participant", "Genotype", "Flesh Colour","Liking Score","Like Comment","Dislike Comment","Gender","Age","Consumption Habit"),
-      caption = "Cluster exemplars generated using apcluster")
+# # cluster exemplars
+# clusters_eg <- a@exemplars %>% unname()
+# kableExtra::kbl(consumer_data[clusters_eg,],
+#       col.names = c("Participant", "Genotype", "Flesh Colour","Liking Score","Like Comment","Dislike Comment","Gender","Age","Consumption Habit"),
+#       caption = "Cluster exemplars generated using apcluster")
 
 # consumer clusters
 c1 <- a@clusters[[1]]%>% unname()
@@ -1398,12 +1528,12 @@ cluster_data <-
 # Summarise cluster demographic data using fisher test and kruskal
 cluster_membership <- cluster_data %>% select(1:4)
 
-tab1 <- CreateTableOne(vars = c("Gender", "age", "habit"),
-                       strata = "Cluster",
-                       data = cluster_membership,
-                       factorVars = c("Gender", "habit"))
-
-
+tab1 <- CreateTableOne(
+  vars = c("Gender", "age", "habit"),
+  strata = "Cluster",
+  data = cluster_membership,
+  factorVars = c("Gender", "habit")
+)
 
 # summarise cluster liking for each genotype
 
@@ -1601,7 +1731,6 @@ ggplot(PCAvoctable) +
 
 There is an inherent limitation in the dataset whereby fruit included in the consumer study was not able to be used for chemical analysis. This is due to the logistical issues regarding adequate fruit collection and processing: the fruit that was collected was completely consumed by the panelists. To deal with this limitation best linear unbiased estimates were combined with previously collected sensory and metabolite data to represent the broad differences between genotype liking scores. This caveat likely leads to the underestimation of complex nuances between variables that influence papaya fruit liking. Therefore, the model generated from this data highlights larger variable variation between genotypes.
 
-<!-- ### Table 3: Estimated marginal means from the mixed effects model including genotype as a fixed effect and participant as a random effect -->
 
 ```{r Consumer-mixed-model}
 liking_fit <- lmer(liking ~ var +
@@ -2142,41 +2271,37 @@ save(sens_results, file = "data/sens_results.RData")
 ```{r sensory-decomposition-table}
 load("data/sens_results.RData")
 # Organize data with row groups
-sens_table_data <- 
-  data.frame(category = names(sens_results$variance_proportions),
-             proportion = sens_results$variance_proportions) %>%
-  mutate(proportion = round(proportion * 100, 1),
-         category = str_replace(category,'residual', 'Residual'))
+sens_table_data <-
+  data.frame(
+    category = names(sens_results$variance_proportions),
+    proportion = sens_results$variance_proportions
+  ) %>%
+  mutate(
+    proportion = round(proportion * 100, 1),
+    category = str_replace(category, 'residual', 'Residual')
+  )
 # write table
-sens_table <- sens_table_data %>%
-    gt() %>%
-    tab_caption("Variance components analysis showing the proportion of variance in liking scores explained by sensory groups") %>% 
-    # tab_header(
-    #     title = "Variance Components Analysis",
-    #     subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
-    # ) %>%
-    fmt_percent(
-        columns = proportion,
-        decimals = 1,
-        scale_values = FALSE
-    ) %>%
-    cols_label(
-        category = "Sensory Group",
-        proportion = "Variance Explained (%)"
-    ) %>%
-    tab_style(
-        style = cell_borders(
-            sides = "bottom",
-            weight = px(2)
-        ),
-        locations = cells_row_groups()
-    ) %>%
-    opt_row_striping() %>%
-    tab_options(
-        row_group.background.color = "gray90",
-        table.border.top.width = px(3),
-        table.border.bottom.width = px(3)
-    )
+sens_table_data %>%
+  gt() %>%
+  tab_caption(
+    "Variance components analysis showing the proportion of variance in liking scores explained by sensory groups"
+  ) %>%
+  # tab_header(
+  #     title = "Variance Components Analysis",
+  #     subtitle = "Proportion of Variance in Liking Scores Explained by Sensory Groups"
+  # ) %>%
+  fmt_percent(columns = proportion,
+              decimals = 1,
+              scale_values = FALSE) %>%
+  cols_label(category = "Sensory Group", proportion = "Variance Explained (%)") %>%
+  tab_style(style = cell_borders(sides = "bottom", weight = px(2)),
+            locations = cells_row_groups()) %>%
+  opt_row_striping() %>%
+  tab_options(
+    row_group.background.color = "gray90",
+    table.border.top.width = px(3),
+    table.border.bottom.width = px(3)
+  )
 ```
 
 <!-- *Table 5* -->
@@ -2184,68 +2309,65 @@ sens_table <- sens_table_data %>%
 ```{r metabolite-decomposition-table}
 load("data/mets_results.RData")
 # Organize data with row groups
-mets_table_data <- 
-  data.frame(category = names(mets_results$variance_proportions),
-             proportion = mets_results$variance_proportions) %>%
-  mutate(proportion = round(proportion * 100, 1),
-         group_type = case_when(
-           category %in% c("phe", "lip", "car") ~ "Volatiles",
-           category %in% c("sugar", "acid", "GTR") ~ "Non-volatiles",
-           TRUE ~ "Residual"),
-         category = 
-           str_replace_all(category,
-                           c("phe" = "Phenylalanine-derived",
-                             "lip" = "Lipid-derived",
-                             "car" = "Carotenoid/Terpenes",
-                             "sugar" = "Sugars",
-                             "acid" = "Acids",
-                             "GTR" = "GTR")))
+mets_table_data <-
+  data.frame(
+    category = names(mets_results$variance_proportions),
+    proportion = mets_results$variance_proportions
+  ) %>%
+  mutate(
+    proportion = round(proportion * 100, 1),
+    group_type = case_when(
+      category %in% c("phe", "lip", "car") ~ "Volatiles",
+      category %in% c("sugar", "acid", "GTR") ~ "Non-volatiles",
+      TRUE ~ "Residual"
+    ),
+    category =
+      str_replace_all(
+        category,
+        c(
+          "phe" = "Phenylalanine-derived",
+          "lip" = "Lipid-derived",
+          "car" = "Carotenoid/Terpenes",
+          "sugar" = "Sugars",
+          "acid" = "Acids",
+          "GTR" = "GTR"
+        )
+      )
+  )
 # write table
-mets_table <- mets_table_data %>%
-    select(group_type, category, proportion) %>%
-    gt(
-        groupname_col = "group_type"
-    ) %>%
-    tab_caption("Variance components analysis showing the proportion of variance in liking scores explained by metabolite groups") %>% 
-    # tab_header(
-    #     title = "Variance Components Analysis",
-    #     subtitle = "Proportion of Variance in Liking Scores Explained by Metabolite Groups"
-    # ) %>%
-    fmt_percent(
-        columns = proportion,
-        decimals = 1,
-        scale_values = FALSE
-    ) %>%
-    cols_label(
-        category = "Metabolite Group",
-        proportion = "Variance Explained (%)"
-    ) %>%
-    summary_rows(
-        groups = c("Non-volatiles", "Residual", "Volatiles"),
-        columns = proportion,
-        fns = list("Group Total" = ~sum(.)),
-        fmt = ~ fmt_percent(., decimals = 1, scale_values = FALSE)
-    ) %>%
-    grand_summary_rows(
-        columns = proportion,
-        fns = list("Total" = ~sum(.)),
-        fmt = ~ fmt_percent(., decimals = 1, scale_values = FALSE)
-    ) %>%
-    tab_style(
-        style = cell_borders(
-            sides = "bottom",
-            weight = px(2)
-        ),
-        locations = cells_row_groups()
-    ) %>%
-    opt_row_striping() %>%
-    tab_options(
-        row_group.background.color = "gray90",
-        table.border.top.width = px(3),
-        table.border.bottom.width = px(3)
-    )
-
-
+mets_table_data %>%
+  select(group_type, category, proportion) %>%
+  gt(groupname_col = "group_type") %>%
+  tab_caption(
+    "Variance components analysis showing the proportion of variance in liking scores explained by metabolite groups"
+  ) %>%
+  # tab_header(
+  #     title = "Variance Components Analysis",
+  #     subtitle = "Proportion of Variance in Liking Scores Explained by Metabolite Groups"
+  # ) %>%
+  fmt_percent(columns = proportion,
+              decimals = 1,
+              scale_values = FALSE) %>%
+  cols_label(category = "Metabolite Group", proportion = "Variance Explained (%)") %>%
+  summary_rows(
+    groups = c("Non-volatiles", "Residual", "Volatiles"),
+    columns = proportion,
+    fns = list("Group Total" = ~ sum(.)),
+    fmt = ~ fmt_percent(., decimals = 1, scale_values = FALSE)
+  ) %>%
+  grand_summary_rows(
+    columns = proportion,
+    fns = list("Total" = ~ sum(.)),
+    fmt = ~ fmt_percent(., decimals = 1, scale_values = FALSE)
+  ) %>%
+  tab_style(style = cell_borders(sides = "bottom", weight = px(2)),
+            locations = cells_row_groups()) %>%
+  opt_row_striping() %>%
+  tab_options(
+    row_group.background.color = "gray90",
+    table.border.top.width = px(3),
+    table.border.bottom.width = px(3)
+  )
 ```
 
 Finally a predictive model was generated to predict papaya fruit liking in future selection processes. The variables included in the model were reduced to four to prevent overfitting considering the limited sample size: sulcatone (terpene), linalool oxide (terpene), γ-Octalactone (lipid-derived) and total sugars (sucrose, glucose and fructose; sugars). This model may be implemented for selection purposes if the sampling and instrumentation protocols are repeated. New samples may be indexed within the scores of samples used to build the model. Considering the model isn't equipped for extrapolation, any values outside the ranges of what was used to build the model may distort the predicted liking score. Unscaled data was input to the model algorithm to make it more accessible for new data imputation.

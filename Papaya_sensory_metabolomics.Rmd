@@ -220,11 +220,11 @@ required_packages <- c(
 
     "tidyverse","readxl","janitor", "AMR", # Data wrangling
 
-    "ggpmisc","ggthemes","ggrepel","geomtextpath","scales", # Plotting stuff
+    "ggpmisc","ggthemes","ggrepel","geomtextpath","scales", "ggcorrplot", # Plotting stuff
 
-    "FactoMineR","factoextra", # PCA & visualization
+    "FactoMineR","factoextra", "ggcorrplot", # PCA & visualization
 
-    "car","agricolae","tableone", "summarytools", # Stats & summaries
+    "car","agricolae","tableone", "summarytools", "rstatix", # Stats & summaries
 
     "BGLR","caret","gbm","xgboost","apcluster","lme4","emmeans" # Modeling & ML
 )
@@ -268,8 +268,23 @@ sensory_meta <-
         rep("flavour", 5),
         rep("aftertaste", 4))) %>% 
   
-   mutate(group = snakecase::to_title_case(group),
-          label = snakecase::to_sentence_case(sub("_[A-Z]+$", "", var)))
+  mutate(
+    group = snakecase::to_title_case(group),
+    label = var %>%
+      str_remove("_[A-Z]+$") %>%
+      str_replace_all("_", " ") %>%
+      tolower(),
+    label2 = var |>
+      str_replace_all(
+        c(
+          "FL" = "flavour",
+          "AT" = "aftertaste",
+          "AR" = "aroma",
+          "TX" = "texture",
+          "_" = " "
+        )
+      )
+  )
 
 # Create classification key for VOCs
 class_key <- 
@@ -292,7 +307,8 @@ class_key <-
                              "Gamma_octalactone" = "γ-Octalactone",
                              "GTR_conc" = "GTR",
                              "wet_fraction"="Water fraction",
-                             "_" = " ")))
+                             "_" = " ")),
+    label2 = label)
 
 glimpse(genotype_table)
 glimpse(sensory_meta)
@@ -340,14 +356,14 @@ kableExtra::kbl(matrix_effect[,c(1,7:8)],
                     "Matrix effect red",
                     "Matrix effect yellow"),
       digits = 1,
-      align = c('l', 'c', 'c'),
-      caption = "matrix effect for VOC quantification") %>% 
+      align = c('l', 'c', 'c')) |> 
+      #caption = "matrix effect for VOC quantification") %>% 
   kable_styling()
 ```
 
 -   Transforming VOC data to ng/kg
 
-```{r VOC-transformations, collapse=TRUE,  dependson="VOC-Matrix-Effect"}
+```{r VOC-transformations, collapse=TRUE}
 calibration_table <- read_excel("data/Results_22_23.xlsx", "densities") %>% 
   select(Hexanal:Linalool) %>% 
   t() %>% as.data.frame() %>% rownames_to_column("species") %>% 
@@ -448,7 +464,7 @@ kableExtra::kbl(extraction_efficiency,
 
 -   Sugar data unit transformation and imputation of missing values
 
-```{r Sugar-transformation,  cache.lazy=FALSE, dependson="Sugar-extraction-efficiency", collapse=TRUE}
+```{r Sugar-transformation, collapse=TRUE}
 bad_dry <- paste0("JL", 10:53) # compromised samples
 UI <- paste0("UI", 1:5) # auxiliary samples
 
@@ -477,8 +493,8 @@ kableExtra::kbl(na_rows,
 set.seed(11)
 
 imp <- mice::mice(raw_sugar, m = 25, maxit = 100, print = FALSE)
-save(imp, file = "data/sugar_imp.RData")
-load("data/sugar_imp.RData")
+# saveRDS(imp, "data/sugar_imp.RDS")
+imp <- readRDS("data/sugar_imp.RDS")
 imputed_sugar <- complete(imp, "long") %>%
   group_by(ID) %>%
   summarise(across(c(mass, FW_factor, Glucose, Fructose, Sucrose), mean))
@@ -507,7 +523,7 @@ glimpse(sugar_data)
 
 -   Glucotropaeolin unit transformation and QC analysis
 
-```{r GTR-data, warning=FALSE,  cache.lazy=FALSE, dependson="Sugar-transformation", collapse=TRUE}
+```{r GTR-data, warning=FALSE, collapse=TRUE}
 # Read sample metadata and define sample IDs
 GTR_key <- read_xlsx("data/July24_all.xlsx", sheet = "meth_key")
 samples <- paste0("ME", seq(10, 136))
@@ -568,7 +584,7 @@ kbl(CCV_samples,
 
 -   Combining data and imputing missing data
 
-```{r combine-data,  cache.lazy=FALSE, collapse=TRUE, dependson=c("GTR-data","Sugar-transformation","OC-transformations")}
+```{r combine-data, collapse=TRUE}
 # Load proxy sugar/acid data, excluding redundant Genotype column
 proxy <- read_xlsx("data/22_23_proxy_sugar.xlsx", "all") 
 # Combine multiple datasets
@@ -584,10 +600,8 @@ conc_matrix <- full_join(sugar_data, GTR_data, relationship = "many-to-many") %>
               values_from = corrected_conc_ppb)
 
 # missing results
-kbl(conc_matrix[!complete.cases(conc_matrix),],
-                   caption = "Results with missing values",
-                   digits = 1) %>% 
-   kable_styling()
+kbl(conc_matrix[!complete.cases(conc_matrix), ], caption = "Results with missing values", digits = 1) %>%
+  kable_styling()
 
 # Get all imputed datasets using default parameters
 imp_vars <- c("GTR_conc","pH","Brix","TA")
@@ -635,12 +649,166 @@ print(summarytools::dfSummary(full_data_matrix,
                 graph.magnif = 0.82,
                 varnumbers = FALSE,
                 style = "grid",
-                valid.col = TRUE,  # Changed to TRUE to match your desired output
-                graph.col = TRUE),  # Added to ensure graphs are displayed
-      method = 'render',  # Important for proper HTML rendering
+                valid.col = TRUE, 
+                graph.col = TRUE),  
+      method = 'render',  
       table.classes = 'st-table st-table-bordered st-table-striped')
 ```
+## Explanatory variable colinearity
 
+```{r sensory-collinearity, fig.cap="Correlation plot showing relationships between sensory variables. Purple indicates positive correlations, green indicates negative correlations, and white indicates no correlation. Only significant correlations (p < 0.05) are shown.", fig.height=8, fig.width=8}
+
+# Data preparation
+sens_vars <- full_data_matrix |>
+  select(ID, aroma_intensity_AR:prickly_AT) |>
+  pivot_longer(aroma_intensity_AR:prickly_AT, names_to = "var", values_to = "score") |>
+  left_join(sensory_meta) |>
+  select(ID, label2, score) |>
+  pivot_wider(names_from = "label2", values_from = "score") |> 
+  select(-ID)
+
+# Calculate the correlation matrix
+corr <- cor(sens_vars)
+
+# Calculate p-values
+p_mat <- cor_pmat(sens_vars) |> 
+  select(-rowname) |>   
+  as.matrix()
+
+ggcorrplot(
+  corr,
+  method = "square",
+  type = "upper",
+  hc.order = TRUE,
+  hc.method = "complete",
+  colors = c("#313695", "white", "#A50026"),  
+  p.mat = p_mat,
+  sig.level = 0.05,
+  insig = "blank",
+  # lab = TRUE,
+  # lab_size = 2.8,         
+  tl.cex = 7,            
+  tl.srt = 45,
+  digits = 2,
+  ggtheme = ggplot2::theme_classic(), 
+  outline.color = "gray90"
+) +
+  theme(
+    # Text elements
+    axis.text.x = element_text(angle = 45,
+                               hjust = 1,
+                               face = "italic",
+                               size = 8),   
+    axis.text.y = element_text(face = "italic",
+                               size = 8),    
+    axis.title = element_blank(),          
+    
+    # Panel elements
+    panel.grid = element_blank(),       
+    panel.border = element_rect(color = "black",
+                                fill = NA,
+                                linewidth = 0.5), 
+    # Legend customization
+    legend.position = "right",
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 7),
+    legend.key.size = unit(0.8, "lines"),
+    
+    # Title and caption
+    plot.title = element_text(size = 10,
+                              face = "bold",
+                              hjust = 0.5),  
+    plot.caption = element_text(size = 7,
+                                hjust = 1,
+                                face = "italic"),
+    
+    # Margins
+    plot.margin = margin(10, 10, 10, 10)
+  ) +
+  labs(
+    title = "Correlations Between Sensory Attribute Scores",
+    caption = "* Blank spaces indicate non-significant correlations (p > 0.05)"
+  )
+
+```
+
+```{r metabolites-collinearity, fig.cap="Correlation plot showing relationships between metabolite variables. Purple indicates positive correlations, green indicates negative correlations, and white indicates no correlation. Only significant correlations (p < 0.05) are shown.", fig.height=8, fig.width=8}
+
+# Data preparation
+mets_vars <- full_data_matrix |>
+  select(where(is.numeric)) |>
+  select(Glucose:BITC) 
+
+# Calculate the correlation matrix
+corr2 <- cor(mets_vars)
+
+# Calculate p-values
+p_mat2 <- cor_pmat(mets_vars) |> 
+  select(-rowname) |>   
+  as.matrix()
+
+ggcorrplot(
+  corr2,
+  method = "square",
+  type = "upper",
+  hc.order = TRUE,
+  hc.method = "complete",
+  colors = c("#313695", "white", "#A50026"),  
+  p.mat = p_mat2,
+  sig.level = 0.05,
+  insig = "blank",
+  # lab = TRUE,
+  # lab_size = 2.8,         
+  tl.cex = 7,            
+  tl.srt = 45,
+  digits = 2,
+  ggtheme = ggplot2::theme_classic(), 
+  outline.color = "gray90"
+) +
+  theme(
+    # Text elements
+    axis.text.x = element_text(angle = 45,
+                               hjust = 1,
+                               size = 8),   
+    axis.text.y = element_text(size = 8),    
+    axis.title = element_blank(),          
+    
+    # Panel elements
+    panel.grid = element_blank(),       
+    panel.border = element_rect(color = "black",
+                                fill = NA,
+                                linewidth = 0.5), 
+    # Legend customization
+    legend.position = "right",
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 7),
+    legend.key.size = unit(0.8, "lines"),
+    
+    # Title and caption
+    plot.title = element_text(size = 10,
+                              face = "bold",
+                              hjust = 0.5),  
+    plot.caption = element_text(size = 7,
+                                hjust = 1,
+                                face = "italic"),
+    
+    # Margins
+    plot.margin = margin(10, 10, 10, 10)
+  ) +
+  labs(
+    title = "Correlations Between Metabolite Concentrations",
+    caption = "* Blank spaces indicate non-significant correlations (p > 0.05)"
+  )
+
+
+# ggsave("mets_corr.png",
+#        width = 8,
+#        height = 7,
+#        dpi = 600,
+#        bg = "white",
+#        units = "in")
+
+```
 ## Sensory and metabolite Principal Component Analysis
 
 Metabolites with odour activity values less than one likely play a very minor role in fruit flavour; due to the small ranges and fluctuations, their influence on flavour may be overestimated in modelling. Moreover, sensory terms including prickly aftertaste and metallic aftertaste poorly differentiated the genotypes throughout descriptive analysis. Therefore these variables were removed to focus on highly relevant flavour variables.
@@ -686,7 +854,8 @@ PCAvar_coords <- PCA_vocs$var$coord[topvars$species,] %>%
   rownames_to_column(var = "var") %>% 
   left_join(sensory_meta) %>% 
   mutate(Category = snakecase::to_title_case(group),
-         sensory_label = snakecase::to_sentence_case(sub("_[A-Z]+$", "", var))) 
+         sensory_label = snakecase::to_sentence_case(sub("_[A-Z]+$", "", var)),
+         label = tolower(label)) 
 
 # create a scale value to the size of the scatter plot to adjust variable coordinates
 var <- facto_summarize(PCA_vocs, 
@@ -745,6 +914,7 @@ ggplot(Mean_coords) +
   geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
                   data = PCAvar_plot_data,
                   inherit.aes = F,
+                  fontface = "italic",
                   hjust=-0.15, vjust=0.20, size=3.2, box.padding = 0.1) +
   scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090")) +
   geom_point(alpha = 1, size=2.5) +
@@ -754,7 +924,7 @@ ggplot(Mean_coords) +
                      axis.title = element_text(size=12)) +
   geom_text_repel(label = Mean_coords$Genotype2, 
                   size=3, hjust=-0.2, vjust=0.5, box.padding = 0.2,
-                  colour = "black", fontface = "italic") +
+                  colour = "black") +
    scale_shape_manual(values = c(21,22,24)) +scale_fill_manual(values = my_colours) +
   guides(colour=guide_legend(override.aes = list(label="")))+
   scale_fill_identity(guide = guide_legend(override.aes = list(shape = 21))) +
@@ -838,6 +1008,7 @@ ggplot(Mean_coords) +
                arrow = arrow(angle = 30, length = unit(0.2, "cm"))) +
   geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
                   data = PCAvar_plot_data,
+                  fontface = "italic",
                   inherit.aes = F,
                   hjust=0.3, vjust=-0.6, size=3.2, box.padding = 0.1) + 
   scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090","darkorange")) +
@@ -848,7 +1019,7 @@ ggplot(Mean_coords) +
                      axis.title = element_text(size=12)) +
   geom_text_repel(label = Mean_coords$Genotype2, 
                   size=3, hjust=1.1, vjust=1.2, box.padding = 0.1,
-                  colour = "black", fontface = "italic") +
+                  colour = "black") +
   scale_shape_manual(values = c(21,22,24)) +scale_fill_manual(values = my_colours) +
   guides(colour=guide_legend(override.aes = list(label="")))+
   scale_fill_identity(guide = guide_legend(override.aes = list(shape = 21))) +
@@ -934,6 +1105,7 @@ ggplot(Mean_coords) +
   geom_text_repel(mapping = aes(colour=group, x=Dim.1, y=Dim.2, label=label),
                   data = PCAvar_plot_data,
                   inherit.aes = F,
+                  fontface = "italic",
                   hjust=0.3, vjust=-0.6, size=3.2, box.padding = 0.1) +
   scale_color_manual(values = c("#8B0000", "#000080", "#228B22", "#708090","darkorange")) +
   geom_point(alpha = 1, size=2.5) +
@@ -943,7 +1115,7 @@ ggplot(Mean_coords) +
                      axis.title = element_text(size=12)) +
   geom_text_repel(label = Mean_coords$Genotype2,
                   size=3, hjust=1.1, vjust=1.2, box.padding = 0.1,
-                  colour = "black", fontface = "italic") +
+                  colour = "black") +
   scale_shape_manual(values = c(21,22,24)) +scale_fill_manual(values = my_colours) +
   guides(colour=guide_legend(override.aes = list(label="")))+
   scale_fill_identity(guide = guide_legend(override.aes = list(shape = 21))) +
@@ -1035,6 +1207,7 @@ gbm_data <- wts %>%
   select(all_of(gbm_name)) %>% 
   rownames_to_column(var = "var") %>% 
   left_join(class_key) %>% 
+  select(-label2) |> 
   pivot_longer(cols = 2:19, values_to = "x", names_to = "trait") %>% 
   mutate(trait=str_replace_all(trait,"_gbm",""))
 
@@ -1615,7 +1788,7 @@ scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73"),
     limits = c(0, 100),
     expand = c(0, 0), 
     sec.axis = sec_axis(
-      ~.,
+      transform = ~.,
       breaks = lam_breaks,
       labels = lam_labels,
       name = 'Labeled Affective Magnitude (LAM) Scale'))
@@ -2560,14 +2733,14 @@ writexl::write_xlsx(flattened_results,"results/model_results.xlsx")
 ```
 
 <!-- ### Table 6: Comparison of XGBoost performance metrics using different variables associated with papaya liking  -->
-```{r models-table, results='asis', echo=FALSE}
+```{r models-table, results='asis', echo=FALSE, tab.cap="Comparison of XGBoost performance metrics using different variables associated with papaya liking"}
 flattened_results <- read_xlsx("data/model_results.xlsx")
 # Filter top results by RMSE
 # mcaption("dt-models", "Comparison of XGBoost performance metrics using different variables associated with papaya liking")
 flattened_results %>% 
   slice_min(RMSE,n=150) %>% 
   mutate(across(where(is.numeric),~round(.x, digits = 2))) %>% 
-  datatable(caption = "Comparison of XGBoost performance metrics using different variables associated with papaya liking")
+  datatable()
 
 
 ```
@@ -2667,7 +2840,7 @@ best_params <- results[which.min(results$best_rmse),]
 
 ```
 
-```{r XGBoost-test-model}
+```{r XGBoost-test-model, eval=FALSE}
 
 
 # run model with best parameters.
@@ -2755,12 +2928,11 @@ The summarised volatile concentrations are reported below
 <!-- ### Table 9: Summary of VOCs across 27 papaya genotypes.  -->
 
 ```{r VOC-summary, echo=FALSE}
-left_join(read_xlsx("data/VOC_meta.xlsx"), VOC_summary) %>% 
+left_join(read_xlsx("data/VOC_limits.xlsx", sheet = "Sheet2"), VOC_summary) %>% 
   mutate(across(where(is.numeric), ~ round(.x, digits = 2))) %>%
   kbl(
     caption = "Summary of VOC concentrations (ppb) by chemical species",
-    col.names = c("Species", "CAS Number", "RT (min)", "RI", "Chemical Class", "n", "Mean", "SD", "SE",   
-"Median", "Min", "Max", "N detected", "% detected"),
+    col.names = c("Species", "Chemical Class", "CAS Number", "MRM transition", "RT", "RI", "LOD", "LOQ", "n", "Mean", "SD", "SE", "Median", "Min", "Max", "N detected", "% detected"),
     align = c('l', 'l', rep('c', 12))) %>% 
    kable_styling()
 ```

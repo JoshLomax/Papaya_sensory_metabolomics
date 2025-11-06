@@ -6,6 +6,8 @@
 *.jpeg
 *.tiff
 *.png
+*.pdf
+*.R
 Papaya_sensory_metabolomics_cache/
 Papaya_sensory_metabolomics_files/
 Output/

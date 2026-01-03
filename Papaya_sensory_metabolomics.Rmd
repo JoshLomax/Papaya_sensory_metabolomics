@@ -494,7 +494,7 @@ set.seed(11)
 
 imp <- mice::mice(raw_sugar, m = 25, maxit = 100, print = FALSE)
 # saveRDS(imp, "data/sugar_imp.RDS")
-imp <- readRDS("data/sugar_imp.RDS")
+#imp <- readRDS("data/sugar_imp.RDS")
 imputed_sugar <- complete(imp, "long") %>%
   group_by(ID) %>%
   summarise(across(c(mass, FW_factor, Glucose, Fructose, Sucrose), mean))
@@ -1925,7 +1925,7 @@ model_data <-
   select(-c(assay:Genotype,SE:upper.CL,label:Genotype2)) %>% 
   relocate(Flesh, .after = "emmean") %>% 
   select(-c(Decanal,Methyl_hexanoate,Octanal,E_2_nonal, Nonanal)) 
-
+#saveRDS(model_data,"model_data.RDS")
 kbl(blue_df, caption = "Estimated marginal means from the mixed effects model including genotype as a fixed effect and participant as a random effect", 
       col.names = c("Genotype","Least-squares mean",
                     colnames(blue_df)[3:6]),
@@ -2946,24 +2946,40 @@ predictions <- final_model_results$predictions$test
 
 ```{r XGboost-eval}
 # Model evaluation
-final_model_results$metrics %>%
-  pivot_longer(
-    cols = everything(),
-    names_to = "metric",
-    values_to = "value"
-  ) %>%
+performance_table <- final_model_results$metrics %>%
+  pivot_longer(cols = everything(),
+               names_to = "metric",
+               values_to = "value") %>%
   mutate(
     dataset = ifelse(str_starts(metric, "train_"), "train", "test"),
     metric_clean = str_remove(metric, "^(train_|test_)")
   ) %>%
   select(-metric) %>%
-  pivot_wider(
-    names_from = metric_clean,
-    values_from = value
-  ) %>%
-  select(dataset, n, mae, rmse, r2, adj_r2, nrmse, corr, rpd, mean_residual, residual_std) |> 
-  mutate(across(where(is.numeric),~round(.x,2))) |> 
-  gt()
+  pivot_wider(names_from = metric_clean, values_from = value) %>%
+  select(dataset,
+         n,
+         mae,
+         rmse,
+         r2,
+         adj_r2,
+         nrmse,
+         corr,
+         rpd,
+         mean_residual,
+         residual_std) |>
+  mutate(across(where(is.numeric),  ~ round(.x, 2))) 
+
+gt(performance_table) |>
+  tab_caption("XGBoost model performance metrics on Z-scaled data")
+
+```
+
+```{r}
+performance_table |> 
+  mutate(across(c(mae,rmse,nrmse,mean_residual,residual_std), ~ .x * sd(model_data$emmean)),
+         across(where(is.numeric), ~round(.x, digits = 2))) |>
+  gt()  |> 
+  tab_caption("XGBoost model performance metrics on Z-scaled data tranformed into raw data units (0-100 liking)")
 ```
 
 ```{r XGBoost-pred-vs-obs,  fig.cap="XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar.", fig.height=7, fig.width=7}

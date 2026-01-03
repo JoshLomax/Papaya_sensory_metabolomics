@@ -12,3 +12,6 @@ Papaya_sensory_metabolomics_cache/
 Papaya_sensory_metabolomics_files/
 Output/
 .Rproj.user
+my_pca_plot.pdf
+model_data.RDS
+boost_results_improved.RDS

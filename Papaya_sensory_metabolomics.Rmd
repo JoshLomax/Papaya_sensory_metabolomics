@@ -2543,7 +2543,8 @@ mets_table_data %>%
   )
 ```
 
-Finally a predictive model was generated to predict papaya fruit liking in future selection processes. The variables included in the model were reduced to four to prevent overfitting due to the limited sample size: sulcatone (terpene), β-ionone (sesquiterpene), γ-Octalactone (lipid-derived) and Brix (total soluble solids; linked to total sugars). These variables were selected from variable influence plots in the previous section. This model may be implemented for selection purposes if the sampling and instrumentation protocols are repeated. New samples may be indexed within the scores of samples used to build the model. Considering the model isn't equipped for extrapolation, any values outside the ranges of what was used to build the model may distort the predicted liking score. XGBoost has inherent randomness that isn't controlled by set.seed(), therefore reproducibility may not be perfect.
+Finally a predictive model was generated to predict papaya fruit liking in future selection processes. Due to the limited sample size, feature selection based on Figure 14 statistics was implemented. variables are ranked by GBM variable importance and top ranking variables are included. The number of variables are compared to optimise model performance and reduce over-fitting (estimated by test-train metrics concordance).
+
 
 ```{r multiple-model-comparison}
 fit_papaya_liking_model <- function(boost_data,
@@ -2898,20 +2899,106 @@ train_final_model_with_params <- function(selected_row, X_train_full, X_test, y_
     predictions = list(train = train_pred, test = test_pred)
   )
 }
-boost_data <- model_data |> 
-  select(emmean,Brix,Gamma_octalactone,Beta_ionone,Sulcatone) |> 
-  scale() |> 
-  as.data.frame()
-
-# start modelling - MAIN COMMAND
-# results <- fit_papaya_liking_model(boost_data, seed = 11, cv_folds = 5)
-
-# saveRDS(results,"data/xgboost_validation.RDS")
 ```
 
-```{r XGBoost-test-model}
-results <- readRDS("data/xgboost_validation.RDS")
-best_model <- results$cv_results %>%
+```{r compare-variable-subsets, eval=FALSE}
+important_variables <- results |> filter(model == "Red_Yellow_mets_gbm") |> arrange(desc(coord))
+
+variable_combos <- c(2,3,4,5,6,7,8)
+
+combo_results <- variable_combos |>
+  set_names() |>
+  map(function(top_variables) {
+    explanatory_vars <- important_variables |>
+      slice_head(n = top_variables) |>
+      pull(var)
+    
+    boost_data <- model_data |>
+      select(emmean, all_of(explanatory_vars)) |>
+      scale() |>
+      as.data.frame()
+    
+    xgb_results <- fit_papaya_liking_model(boost_data, seed = 11, cv_folds = 5)
+    
+    best_model <- xgb_results$cv_results %>%
+      # Step 1: Remove models with excessive overfitting (worst 20%)
+      filter(
+        rmse_diff_pct <= quantile(rmse_diff_pct, 0.8),
+        overfitting_ratio <= quantile(overfitting_ratio, 0.8)
+      ) %>%
+      # Step 2: Create balanced score
+      mutate(
+        # Normalise metrics to 0-1 scale
+        val_rmse_norm = (max(cv_val_rmse) - cv_val_rmse) / (max(cv_val_rmse) - min(cv_val_rmse)),
+        overfitting_norm = (max(rmse_diff_pct) - rmse_diff_pct) / (max(rmse_diff_pct) - min(rmse_diff_pct)),
+        stability_norm = (max(cv_val_rmse_sd) - cv_val_rmse_sd) / (max(cv_val_rmse_sd) - min(cv_val_rmse_sd)),
+        
+        # Weighted score: 60% validation accuracy, 25% overfitting, 15% stability
+        final_score = 0.60 * val_rmse_norm + 0.25 * overfitting_norm + 0.15 * stability_norm
+      ) %>%
+      # Step 3: Select top 10 models
+      arrange(desc(final_score)) %>%
+      slice_head(n = 1)
+    
+    # use best model parameters to train final model
+    selected_row <- best_model
+    
+    # Train final model with selected parameters
+    final_model_results <- xgb_results$train_final_model(selected_row)
+    
+    # Make predictions on test set
+    predictions <- final_model_results$predictions$test
+    
+    performance_table <- final_model_results$metrics %>%
+      pivot_longer(cols = everything(),
+                   names_to = "metric",
+                   values_to = "value") %>%
+      mutate(
+        dataset = ifelse(str_starts(metric, "train_"), "train", "test"),
+        metric_clean = str_remove(metric, "^(train_|test_)")
+      ) %>%
+      select(-metric) %>%
+      pivot_wider(names_from = metric_clean, values_from = value) %>%
+      select(dataset,
+             n,
+             mae,
+             rmse,
+             r2,
+             adj_r2,
+             nrmse,
+             corr,
+             rpd,
+             mean_residual,
+             residual_std) |>
+      mutate(across(where(is.numeric), ~ round(.x, 2)),
+             model_vars = paste(explanatory_vars, collapse = ", "))
+    
+    return(performance_table)
+  }) |> 
+  list_rbind()
+
+saveRDS(combo_results, "data/xgb_combos.RDS")
+```
+
+```{r xgb-combo-results}
+combo_results <- readRDS("data/xgb_combos.RDS")
+
+combo_results |> 
+  gt() |> 
+  tab_caption("XGBoost model performance metrics on Z-scaled data for 2 - 8 explanatory variables")
+
+```
+
+```{r XGBoost-final-model, results='hide'}
+
+boost_data <- model_data |>
+  select(emmean, Sulcatone, Brix, Beta_ionone) |>
+  scale() |>
+  as.data.frame()
+
+final_xgb_results <- fit_papaya_liking_model(boost_data, seed = 11, cv_folds = 5)
+
+best_model <- final_xgb_results$cv_results %>%
   # Step 1: Remove models with excessive overfitting (worst 20%)
   filter(
     rmse_diff_pct <= quantile(rmse_diff_pct, 0.8),
@@ -2931,21 +3018,20 @@ best_model <- results$cv_results %>%
   arrange(desc(final_score)) %>%
   slice_head(n = 1)
 
-
 # use best model parameters to train final model
 selected_row <- best_model
 
+selected_row[1:6] |>
+  mutate(across(where(is.numeric), ~round(.x, digits = 2))) |> 
+  gt() |> 
+  tab_caption("Final XGBoost model parameters")
+
 # Train final model with selected parameters
-final_model_results <- results$train_final_model(selected_row)
+final_model_results <- final_xgb_results$train_final_model(selected_row)
 
 # Make predictions on test set
 predictions <- final_model_results$predictions$test
-```
 
-<!-- ### Table 7: XGBoost performance metrics -->
-
-```{r XGboost-eval}
-# Model evaluation
 performance_table <- final_model_results$metrics %>%
   pivot_longer(cols = everything(),
                names_to = "metric",
@@ -2967,25 +3053,28 @@ performance_table <- final_model_results$metrics %>%
          rpd,
          mean_residual,
          residual_std) |>
-  mutate(across(where(is.numeric),  ~ round(.x, 2))) 
-
-gt(performance_table) |>
-  tab_caption("XGBoost model performance metrics on Z-scaled data")
-
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+    
 ```
 
-```{r}
+The most robust variable combination was sulcatone (terpene), β-ionone (sesquiterpene) and Brix (total soluble solids; linked to total sugars). This model may be implemented for selection purposes if the sampling and instrumentation protocols are repeated. New samples may be indexed within the scores of samples used to build the model. Considering the model isn't equipped for extrapolation, any values outside the ranges of what was used to build the model may distort the predicted liking score. XGBoost has inherent randomness that isn't controlled by set.seed(), therefore reproducibility may not be perfect.
+
+
+```{r XGboost-eval}
+# stumbling to the finish line
 performance_table |> 
   mutate(across(c(mae,rmse,nrmse,mean_residual,residual_std), ~ .x * sd(model_data$emmean)),
          across(where(is.numeric), ~round(.x, digits = 2))) |>
   gt()  |> 
   tab_caption("XGBoost model performance metrics on Z-scaled data tranformed into raw data units (0-100 liking)")
+
 ```
+
 
 ```{r XGBoost-pred-vs-obs,  fig.cap="XGBoost model predicted liking vs observed liking based on concentrations of sulcatone, Beta ionone, linalool and total sugar.", fig.height=7, fig.width=7}
 # Create a scatter plot of predicted vs actual values for test data
 ggplot(data.frame(Predicted = predictions, 
-                        Actual = boost_data[results$data_splits$test_idx,"emmean"]), 
+                        Actual = boost_data[final_xgb_results$data_splits$test_idx,"emmean"]), 
              aes(x = Actual, y = Predicted)) + 
   stat_poly_line(color = "firebrick4", fill = "red3") + 
   stat_poly_eq() + theme_tufte() + 

@@ -161,7 +161,7 @@ BibTeX format:
 - **Josh Lomax** - [GitHub Profile](https://github.com/JoshLomax)
 - **Ido Bar** - [GitHub Profile](https://github.com/IdoBar)
 
-Published article: [Under review](...)
+Published article: [Metabolomic modelling of sensory characteristics and consumer liking in papaya fruit](https://doi.org/10.1016/j.foodchem.2026.148323)
 
 ---
 Last Updated: June 2025
